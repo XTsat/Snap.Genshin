@@ -1,36 +1,45 @@
-﻿using System;
-using System.Globalization;
-using System.Windows;
-using System.Windows.Data;
+﻿using System.Globalization;
 
 namespace DGP.Genshin.Control.Converter
 {
-    public class PercentageToHeightConverter : DependencyObject, IValueConverter
+    /// <summary>
+    /// 百分比转换高度
+    /// </summary>
+    public sealed class PercentageToHeightConverter : DependencyObject, IValueConverter
     {
+        private static readonly DependencyProperty TargetWidthProperty = Property<PercentageToHeightConverter>.Depend(nameof(TargetWidth), 1080D);
+        private static readonly DependencyProperty TargetHeightProperty = Property<PercentageToHeightConverter>.Depend(nameof(TargetHeight), 390D);
+
+        /// <summary>
+        /// 目标宽度
+        /// </summary>
         public double TargetWidth
         {
-            get { return (double)GetValue(TargetWidthProperty); }
-            set { SetValue(TargetWidthProperty, value); }
-        }
-        public static readonly DependencyProperty TargetWidthProperty =
-            DependencyProperty.Register("TargetWidth", typeof(double), typeof(PercentageToHeightConverter), new PropertyMetadata(1080D));
+            get => (double)GetValue(TargetWidthProperty);
 
+            set => SetValue(TargetWidthProperty, value);
+        }
+
+        /// <summary>
+        /// 目标高度
+        /// </summary>
         public double TargetHeight
         {
-            get { return (double)GetValue(TargetHeightProperty); }
-            set { SetValue(TargetHeightProperty, value); }
-        }
-        public static readonly DependencyProperty TargetHeightProperty =
-            DependencyProperty.Register("TargetHeight", typeof(double), typeof(PercentageToHeightConverter), new PropertyMetadata(390D));
+            get => (double)GetValue(TargetHeightProperty);
 
+            set => SetValue(TargetHeightProperty, value);
+        }
+
+        /// <inheritdoc/>
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
             return (double)value * (TargetHeight / TargetWidth);
         }
 
+        /// <inheritdoc/>
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         {
-            throw new NotImplementedException();
+            throw Must.NeverHappen();
         }
     }
 }

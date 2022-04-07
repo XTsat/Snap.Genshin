@@ -1,23 +1,23 @@
-﻿using DGP.Genshin.ViewModel;
-using System.Threading.Tasks;
-using System.Windows.Controls;
+﻿using DGP.Genshin.Control.Infrastructure.Concurrent;
+using DGP.Genshin.ViewModel;
+using Snap.Core.DependencyInjection;
 
 namespace DGP.Genshin.Page
 {
     /// <summary>
-    /// WeeklyPage.xaml 的交互逻辑
+    /// 周本页面
     /// </summary>
-    public partial class WeeklyPage : System.Windows.Controls.Page
+    [View(InjectAs.Transient)]
+    internal partial class WeeklyPage : AsyncPage
     {
-        public WeeklyPage()
+        /// <summary>
+        /// 构造一个新的周本页面
+        /// </summary>
+        /// <param name="vm">视图模型</param>
+        public WeeklyPage(WeeklyViewModel vm)
+            : base(vm)
         {
             InitializeComponent();
-        }
-
-        private async void PageLoadedAsync(object sender, System.Windows.RoutedEventArgs e)
-        {
-            await Task.Delay(1000);
-            DataContext = App.GetViewModel<WeeklyViewModel>();
         }
     }
 }

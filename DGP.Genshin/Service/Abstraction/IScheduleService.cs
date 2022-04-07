@@ -1,11 +1,21 @@
-﻿namespace DGP.Genshin.Service.Abstratcion
+﻿using System.Threading.Tasks;
+
+namespace DGP.Genshin.Service.Abstraction
 {
     /// <summary>
-    /// 计划服务
+    /// 定时计划服务
     /// </summary>
     public interface IScheduleService
     {
-        void Initialize();
+        /// <summary>
+        /// 异步初始化服务
+        /// </summary>
+        /// <returns>任务</returns>
+        Task InitializeAsync();
+
+        /// <summary>
+        /// 终止服务
+        /// </summary>
         void UnInitialize();
     }
 }

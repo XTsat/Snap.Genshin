@@ -1,18 +1,17 @@
 ﻿using DGP.Genshin.Control.Infrastructure.CachedImage;
 using DGP.Genshin.DataModel;
-using DGP.Genshin.Service.Abstratcion;
+using DGP.Genshin.Service.Abstraction.IntegrityCheck;
+using DGP.Genshin.Service.Abstraction.Setting;
 using DGP.Genshin.ViewModel;
 using Snap.Core.DependencyInjection;
 using Snap.Core.Logging;
+using Snap.Data.Primitive;
+using Snap.Reflection;
 using Snap.Threading;
-using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Reflection;
-using System.Threading;
 using System.Threading.Tasks;
-
-using IState = DGP.Genshin.Service.Abstratcion.IIntegrityCheckService.IIntegrityCheckState;
+using IState = DGP.Genshin.Service.Abstraction.IntegrityCheck.IIntegrityCheckService.IIntegrityCheckState;
 
 namespace DGP.Genshin.Service
 {
@@ -22,21 +21,43 @@ namespace DGP.Genshin.Service
     [Service(typeof(IIntegrityCheckService), InjectAs.Transient)]
     internal class IntegrityCheckService : IIntegrityCheckService
     {
-        private readonly ISettingService settingService;
         private readonly MetadataViewModel metadataViewModel;
-
-        public IntegrityCheckService(ISettingService settingService, MetadataViewModel metadataViewModel)
-        {
-            this.settingService = settingService;
-            this.metadataViewModel = metadataViewModel;
-        }
 
         /// <summary>
         /// 累计检查的个数
         /// </summary>
         private int cumulatedCount;
 
-        public bool IntegrityCheckCompleted { get; private set; } = false;
+        /// <summary>
+        /// 构造一个新的完整性检测服务
+        /// </summary>
+        /// <param name="metadataViewModel">元数据视图模型</param>
+        public IntegrityCheckService(MetadataViewModel metadataViewModel)
+        {
+            this.metadataViewModel = metadataViewModel;
+        }
+
+        /// <inheritdoc/>
+        public WorkWatcher IntegrityChecking { get; } = new(false);
+
+        /// <inheritdoc/>
+        public async Task CheckMetadataIntegrityAsync(IProgress<IState> progress)
+        {
+            this.Log("Integrity Check Start");
+            using (IntegrityChecking.Watch())
+            {
+                if (Setting2.SkipCacheCheck)
+                {
+                    this.Log("Integrity Check Suppressed by User Settings");
+                    return;
+                }
+
+                int totalCount = GetTotalCount(metadataViewModel);
+
+                await Task.WhenAll(BuildIntegrityTasks(metadataViewModel, totalCount, progress));
+                this.Log($"Integrity Check Complete with {totalCount} entries");
+            }
+        }
 
         /// <summary>
         /// 检查单个集合的Source
@@ -45,94 +66,30 @@ namespace DGP.Genshin.Service
         /// <param name="collection">集合</param>
         /// <param name="totalCount">总个数</param>
         /// <param name="progress">进度</param>
-        private async Task CheckIntegrityAsync<T>(IEnumerable<T>? collection, int totalCount, IProgress<IState> progress) where T : KeySource
+        private async Task CheckIntegrityAsync<T>(IEnumerable<T>? collection, int totalCount, IProgress<IState> progress)
+            where T : KeySource
         {
-            if (collection is null)
+            if (collection is not null)
             {
-                return;
+                await collection.ParallelForEachAsync(async t =>
+                {
+                    if (!FileCache.Exists(t.Source))
+                    {
+                        using MemoryStream? memoryStream = await FileCache.HitAsync(t.Source);
+                    }
+
+                    progress.Report(new IntegrityState(++cumulatedCount, totalCount, t));
+                });
             }
-
-            await collection.ParallelForEachAsync(async (t) =>
-            {
-                if (!FileCache.Exists(t.Source))
-                {
-                    using MemoryStream? memoryStream = await FileCache.HitAsync(t.Source);
-                }
-                progress.Report(new IntegrityState(Interlocked.Increment(ref cumulatedCount), totalCount, t));
-            });
-        }
-
-        /// <summary>
-        /// 检查角色集合的Source
-        /// </summary>
-        /// <param name="collection">角色集合</param>
-        /// <param name="totalCount">总个数</param>
-        /// <param name="progress">进度</param>
-        private async Task CheckCharacterIntegrityAsync(IEnumerable<Character>? collection, int totalCount, IProgress<IState> progress)
-        {
-            if (collection is null)
-            {
-                return;
-            }
-
-            Task sourceTask = collection.ParallelForEachAsync(async (t) =>
-            {
-                if (!FileCache.Exists(t.Source))
-                {
-                    using MemoryStream? memoryStream = await FileCache.HitAsync(t.Source);
-                }
-                progress.Report(new IntegrityState(Interlocked.Increment(ref cumulatedCount), totalCount, t));
-            });
-            Task profileTask = collection.ParallelForEachAsync(async (t) =>
-            {
-                if (!FileCache.Exists(t.Source))
-                {
-                    using MemoryStream? memoryStream = await FileCache.HitAsync(t.Source);
-                }
-                progress.Report(new IntegrityState(Interlocked.Increment(ref cumulatedCount), totalCount, t));
-            });
-            Task gachasSplashTask = collection.ParallelForEachAsync(async (t) =>
-            {
-                if (!FileCache.Exists(t.Source))
-                {
-                    using MemoryStream? memoryStream = await FileCache.HitAsync(t.Source);
-                }
-                progress.Report(new IntegrityState(Interlocked.Increment(ref cumulatedCount), totalCount, t));
-            });
-            await Task.WhenAll(sourceTask, profileTask, gachasSplashTask);
-        }
-
-        public async Task CheckMetadataIntegrityAsync(Action<IState> progressedCallback)
-        {
-            this.Log("Integrity Check Start");
-            IntegrityCheckCompleted = false;
-
-            if (settingService.GetOrDefault(Setting.SkipCacheCheck, false))
-            {
-                this.Log("Integrity Check Suppressed by User Settings");
-                IntegrityCheckCompleted = true;
-                return;
-            }
-
-            Progress<IState> progress = new(progressedCallback);
-            int totalCount = GetTotalCount(metadataViewModel);
-            await Task.WhenAll(BuildIntegrityTasks(metadataViewModel, totalCount, progress));
-            this.Log($"Integrity Check Complete with {totalCount} entries");
-            IntegrityCheckCompleted = true;
         }
 
         private int GetTotalCount(MetadataViewModel metadata)
         {
             int totalCount = 0;
-            foreach (PropertyInfo? propInfo in metadata.GetType().GetProperties())
+            metadata.ForEachPropertyWithAttribute<IntegrityAwareAttribute>((prop, _) =>
             {
-                if (propInfo.GetCustomAttribute<IntegrityAwareAttribute>() is IntegrityAwareAttribute aware)
-                {
-                    object prop = propInfo.GetValue(metadata)!;
-                    int count = (int)(prop.GetType().GetProperty("Count")!.GetValue(prop)!);
-                    totalCount += aware.IsCharacter ? count * 3 : count;
-                }
-            }
+                totalCount += prop.GetPropertyValueByName<int>("Count");
+            });
             return totalCount;
         }
 
@@ -146,22 +103,11 @@ namespace DGP.Genshin.Service
         private List<Task> BuildIntegrityTasks(MetadataViewModel metadata, int totalCount, IProgress<IState> progress)
         {
             List<Task> tasks = new();
-            foreach (PropertyInfo? propInfo in metadata.GetType().GetProperties())
+
+            metadata.ForEachPropertyWithAttribute<IEnumerable<KeySource>, IntegrityAwareAttribute>((keySources, attr) =>
             {
-                if (propInfo.GetCustomAttribute<IntegrityAwareAttribute>() is IntegrityAwareAttribute aware)
-                {
-                    if (aware.IsCharacter)
-                    {
-                        IEnumerable<Character> characters = (IEnumerable<Character>)propInfo.GetValue(metadata)!;
-                        tasks.Add(CheckCharacterIntegrityAsync(characters, totalCount, progress));
-                    }
-                    else
-                    {
-                        IEnumerable<KeySource> keySources = (IEnumerable<KeySource>)propInfo.GetValue(metadata)!;
-                        tasks.Add(CheckIntegrityAsync(keySources, totalCount, progress));
-                    }
-                }
-            }
+                tasks.Add(CheckIntegrityAsync(keySources, totalCount, progress));
+            });
             return tasks;
         }
 
@@ -173,18 +119,30 @@ namespace DGP.Genshin.Service
             /// <summary>
             /// 构造新的进度实例
             /// </summary>
-            /// <param name="count"></param>
-            /// <param name="totalCount"></param>
-            /// <param name="ks"></param>
+            /// <param name="count">当前个数</param>
+            /// <param name="totalCount">总个数</param>
+            /// <param name="ks">当前检查完成的源</param>
             public IntegrityState(int count, int totalCount, KeySource? ks)
             {
                 CurrentCount = count;
                 TotalCount = totalCount;
-                Info = ks?.Source?.ToFileName();
+                Info = ks?.Source?.ToShortFileName();
             }
-            public int CurrentCount { get; set; }
-            public int TotalCount { get; set; }
-            public string? Info { get; set; }
+
+            /// <summary>
+            /// 当前个数
+            /// </summary>
+            public int CurrentCount { get; init; }
+
+            /// <summary>
+            /// 总个数
+            /// </summary>
+            public int TotalCount { get; init; }
+
+            /// <summary>
+            /// 展示信息
+            /// </summary>
+            public string? Info { get; init; }
         }
     }
 }

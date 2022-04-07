@@ -1,9 +1,7 @@
-﻿using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Toolkit.Mvvm.Messaging;
+﻿using CommunityToolkit.Mvvm.Messaging;
+using Microsoft.Extensions.DependencyInjection;
 using Snap.Core.DependencyInjection;
-using Snap.Exception;
-using System;
-using System.Reflection;
+using Snap.Reflection;
 
 namespace DGP.Genshin.Core
 {
@@ -20,6 +18,7 @@ namespace DGP.Genshin.Core
         {
             Services = ConfigureServices();
         }
+
         /// <summary>
         /// 获取 <see cref="IServiceProvider"/> 的实例
         /// 存放类
@@ -32,62 +31,49 @@ namespace DGP.Genshin.Core
         /// <param name="services">容器</param>
         /// <param name="type">待检测的类型</param>
         /// <exception cref="SnapGenshinInternalException">未知的注册类型</exception>
-        private void RegisterService(ServiceCollection services, Type type)
+        protected virtual void RegisterService(ServiceCollection services, Type type)
         {
-            //注册服务类型
-            if (type.GetCustomAttribute<ServiceAttribute>() is ServiceAttribute serviceAttr)
+            if (type.TryGetAttribute(out InjectableAttribute? attr))
             {
-                _ = serviceAttr.InjectAs switch
+                if (attr is InterfaceInjectableAttribute interfaceInjectable)
                 {
-                    InjectAs.Singleton => services.AddSingleton(serviceAttr.InterfaceType, type),
-                    InjectAs.Transient => services.AddTransient(serviceAttr.InterfaceType, type),
-                    _ => throw new SnapGenshinInternalException($"未知的服务类型 {type}"),
-                };
-            }
-            //注册视图模型
-            if (type.GetCustomAttribute<ViewModelAttribute>() is ViewModelAttribute viewModelAttr)
-            {
-                _ = viewModelAttr.InjectAs switch
+                    _ = interfaceInjectable.InjectAs switch
+                    {
+                        InjectAs.Singleton => services.AddSingleton(interfaceInjectable.InterfaceType, type),
+                        InjectAs.Transient => services.AddTransient(interfaceInjectable.InterfaceType, type),
+                        _ => throw Must.NeverHappen(),
+                    };
+                }
+                else
                 {
-                    InjectAs.Singleton => services.AddSingleton(type),
-                    InjectAs.Transient => services.AddTransient(type),
-                    _ => throw new SnapGenshinInternalException($"未知的视图模型类型 {type}"),
-                };
-            }
-            //注册视图
-            if (type.GetCustomAttribute<ViewAttribute>() is ViewAttribute viewAttr)
-            {
-                _ = viewAttr.InjectAs switch
-                {
-                    InjectAs.Singleton => services.AddSingleton(type),
-                    InjectAs.Transient => services.AddTransient(type),
-                    _ => throw new SnapGenshinInternalException($"未知的视图类型 {type}"),
-                };
+                    _ = attr.InjectAs switch
+                    {
+                        InjectAs.Singleton => services.AddSingleton(type),
+                        InjectAs.Transient => services.AddTransient(type),
+                        _ => throw Must.NeverHappen(),
+                    };
+                }
             }
         }
 
         /// <summary>
-        /// 向容器注册服务
+        /// 向容器注册服务, 调用<see cref="RegisterService(ServiceCollection, Type)"/>
         /// </summary>
         /// <param name="services">容器</param>
         /// <param name="entryType">入口类型，该类型所在的程序集均会被扫描</param>
-        /// <exception cref="SnapGenshinInternalException">注册的类型为非已知类型</exception>
-        protected void RegisterServices(ServiceCollection services, Type entryType)
+        protected virtual void RegisterServices(ServiceCollection services, Type entryType)
         {
-            foreach (Type type in entryType.Assembly.GetTypes())
-            {
-                RegisterService(services, type);
-            }
+            entryType.Assembly.ForEachType(type => RegisterService(services, type));
         }
 
         /// <summary>
         /// 探测服务
         /// 并向容器添加默认的 <see cref="IMessenger"/> 与 服务
         /// </summary>
-        /// <param name="services"></param>
+        /// <param name="services">待加入的目标服务集合</param>
         protected virtual void OnProbingServices(ServiceCollection services)
         {
-            //register default services
+            // register default services
             RegisterServices(services, typeof(App));
         }
 
@@ -97,6 +83,7 @@ namespace DGP.Genshin.Core
         /// <see cref="OnProbingServices(ServiceCollection)"/>会被调用以探测整个程序集
         /// 一旦服务配置完成，就无法继续注册
         /// </summary>
+        /// <returns>服务提供器</returns>
         protected IServiceProvider ConfigureServices()
         {
             ServiceCollection services = new();

@@ -1,18 +1,17 @@
-﻿using DGP.Genshin.DataModel;
-using DGP.Genshin.DataModel.Helper;
+﻿using DGP.Genshin.Control.Infrastructure.Concurrent;
+using DGP.Genshin.DataModel.Character;
 using DGP.Genshin.DataModel.Material;
-using Microsoft.Toolkit.Mvvm.Input;
+using DGP.Genshin.Factory.Abstraction;
 using Snap.Core.DependencyInjection;
+using Snap.Core.Logging;
 using Snap.Core.Mvvm;
 using Snap.Data.Primitive;
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Input;
-using WeaponMaterial = DGP.Genshin.DataModel.Material.Weapon;
 using DataModelWeapon = DGP.Genshin.DataModel.Weapon;
+using WeaponMaterial = DGP.Genshin.DataModel.Material.Weapon;
 
 namespace DGP.Genshin.ViewModel
 {
@@ -20,313 +19,170 @@ namespace DGP.Genshin.ViewModel
     /// 日常材料服务
     /// </summary>
     [ViewModel(InjectAs.Singleton)]
-    public class DailyViewModel : ObservableObject2
+    internal class DailyViewModel : ObservableObject2, ISupportCancellation
     {
-        private readonly MetadataViewModel dataViewModel;
+        private const string MondstadtIcon = "https://upload-bbs.mihoyo.com/game_record/genshin/city_icon/UI_ChapterIcon_Mengde.png";
+        private const string LiyueIcon = "https://upload-bbs.mihoyo.com/game_record/genshin/city_icon/UI_ChapterIcon_Liyue.png";
+        private const string InazumaIcon = "https://upload-bbs.mihoyo.com/game_record/genshin/city_icon/UI_ChapterIcon_Daoqi.png";
 
-        public List<NamedValue<DayOfWeek>> DayOfWeeks { get; } = new()
-        {
-            new("星期一", DayOfWeek.Monday),
-            new("星期二", DayOfWeek.Tuesday),
-            new("星期三", DayOfWeek.Wednesday),
-            new("星期四", DayOfWeek.Thursday),
-            new("星期五", DayOfWeek.Friday),
-            new("星期六", DayOfWeek.Saturday),
-            new("星期日", DayOfWeek.Sunday)
-        };
+        private readonly MetadataViewModel metadata;
 
-        private NamedValue<DayOfWeek>? selectedDayOfWeek;
-        public NamedValue<DayOfWeek>? SelectedDayOfWeek
+        private IList<City>? cities;
+
+        /// <summary>
+        /// 构造一个新的日常视图模型
+        /// </summary>
+        /// <param name="metadataViewModel">元数据视图模型</param>
+        /// <param name="asyncRelayCommandFactory">异步命令工厂</param>
+        public DailyViewModel(MetadataViewModel metadataViewModel, IAsyncRelayCommandFactory asyncRelayCommandFactory)
         {
-            get => selectedDayOfWeek;
-            set => SetPropertyAndCallbackOnCompletion(ref selectedDayOfWeek, value, () => TriggerPropertyChanged("Mondstadt", "Liyue", "Inazuma"));
+            metadata = metadataViewModel;
+
+            OpenUICommand = asyncRelayCommandFactory.Create(OpenUIAsync);
         }
 
+        /// <inheritdoc/>
+        public CancellationToken CancellationToken { get; set; }
+
+        /// <summary>
+        /// 城市
+        /// </summary>
+        public IList<City>? Cities { get => cities; set => SetProperty(ref cities, value); }
+
+        /// <summary>
+        /// 打开界面触发的命令
+        /// </summary>
         public ICommand OpenUICommand { get; }
-
-        private async void TriggerPropertyChanged(params string[] cities)
-        {
-            foreach (string city in cities)
-            {
-                ClearFieldValueOf($"today{city}Talent");
-                ClearFieldValueOf($"today{city}WeaponAscension");
-                ClearFieldValueOf($"today{city}Character5");
-                ClearFieldValueOf($"today{city}Character4");
-                ClearFieldValueOf($"today{city}Weapon5");
-                ClearFieldValueOf($"today{city}Weapon4");
-
-                OnPropertyChanged($"Today{city}Talent");
-                await Task.Delay(100);
-                OnPropertyChanged($"Today{city}Character5");
-                await Task.Delay(100);
-                OnPropertyChanged($"Today{city}Character4");
-                await Task.Delay(100);
-                OnPropertyChanged($"Today{city}WeaponAscension");
-                await Task.Delay(100);
-                OnPropertyChanged($"Today{city}Weapon5");
-                await Task.Delay(100);
-                OnPropertyChanged($"Today{city}Weapon4");
-            }
-        }
-        private void ClearFieldValueOf(string name)
-        {
-            FieldInfo? fieldInfo = typeof(DailyViewModel).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
-            fieldInfo?.SetValue(this, null);
-        }
-
-        public DailyViewModel(MetadataViewModel metadataViewModel)
-        {
-            dataViewModel = metadataViewModel;
-
-            OpenUICommand = new AsyncRelayCommand(OpenUIAsync);
-        }
 
         private async Task OpenUIAsync()
         {
-            await Task.Delay(1000);
-            SelectedDayOfWeek = DayOfWeeks.First(d => d.Value == DateTime.UtcNow.DayOfWeek);
-        }
-
-        #region Mondstadt
-        private IEnumerable<Talent>? todayMondstadtTalent;
-        public IEnumerable<Talent>? TodayMondstadtTalent
-        {
-            get
+            try
             {
-                todayMondstadtTalent ??= dataViewModel.DailyTalents?
-                    .Where(i => i.IsTodaysTalent(SelectedDayOfWeek?.Value) && i.IsMondstadt());
-                return todayMondstadtTalent;
+                await Task.Delay(500, CancellationToken);
+                BuildCities();
+            }
+            catch (TaskCanceledException)
+            {
+                this.Log("Open UI cancelled");
             }
         }
 
-        private IEnumerable<WeaponMaterial>? todayMondstadtWeaponAscension;
-        public IEnumerable<WeaponMaterial>? TodayMondstadtWeaponAscension
+        private void BuildCities()
         {
-            get
+            DateTime now = DateTime.UtcNow + TimeSpan.FromHours(4);
+            DayOfWeek dayOfWeek = now.DayOfWeek;
+
+            List<Indexed<Talent, Character>> mondstadtCharacter = new()
             {
-                todayMondstadtWeaponAscension ??= dataViewModel.DailyWeapons?
-                    .Where(i => i.IsTodaysWeapon(SelectedDayOfWeek?.Value) && i.IsMondstadt());
-                return todayMondstadtWeaponAscension;
-            }
+                IndexedFromTalentName(Talent.Freedom, dayOfWeek, 1),
+                IndexedFromTalentName(Talent.Resistance, dayOfWeek, 2),
+                IndexedFromTalentName(Talent.Ballad, dayOfWeek, 0),
+            };
+            List<Indexed<WeaponMaterial, DataModelWeapon>> mondstadtWeapon = new()
+            {
+                IndexedFromMaterialName(WeaponMaterial.Decarabian, dayOfWeek, 1),
+                IndexedFromMaterialName(WeaponMaterial.BorealWolf, dayOfWeek, 2),
+                IndexedFromMaterialName(WeaponMaterial.DandelionGladiator, dayOfWeek, 0),
+            };
+            City mondstadt = new("蒙德", MondstadtIcon, mondstadtCharacter, mondstadtWeapon);
+
+            List<Indexed<Talent, Character>> liyueCharacter = new()
+            {
+                IndexedFromTalentName(Talent.Prosperity, dayOfWeek, 1),
+                IndexedFromTalentName(Talent.Diligence, dayOfWeek, 2),
+                IndexedFromTalentName(Talent.Gold, dayOfWeek, 0),
+            };
+            List<Indexed<WeaponMaterial, DataModelWeapon>> liyueWeapon = new()
+            {
+                IndexedFromMaterialName(WeaponMaterial.Guyun, dayOfWeek, 1),
+                IndexedFromMaterialName(WeaponMaterial.MistVeiled, dayOfWeek, 2),
+                IndexedFromMaterialName(WeaponMaterial.Aerosiderite, dayOfWeek, 0),
+            };
+            City liyue = new("璃月", LiyueIcon, liyueCharacter, liyueWeapon);
+
+            List<Indexed<Talent, Character>> inazumaCharacter = new()
+            {
+                IndexedFromTalentName(Talent.Transience, dayOfWeek, 1),
+                IndexedFromTalentName(Talent.Elegance, dayOfWeek, 2),
+                IndexedFromTalentName(Talent.Light, dayOfWeek, 0),
+            };
+            List<Indexed<WeaponMaterial, DataModelWeapon>> inazumaWeapon = new()
+            {
+                IndexedFromMaterialName(WeaponMaterial.DistantSea, dayOfWeek, 1),
+                IndexedFromMaterialName(WeaponMaterial.Narukami, dayOfWeek, 2),
+                IndexedFromMaterialName(WeaponMaterial.Mask, dayOfWeek, 0),
+            };
+            City inazuma = new("稻妻", InazumaIcon, inazumaCharacter, inazumaWeapon);
+
+            Cities = new List<City>()
+            {
+                mondstadt,
+                liyue,
+                inazuma,
+            };
         }
 
-        private IEnumerable<Character>? todayMondstadtCharacter5;
-        public IEnumerable<Character>? TodayMondstadtCharacter5
+        private Indexed<Talent, Character> IndexedFromTalentName(string talentName, DayOfWeek dayOfWeek, int position)
         {
-            get
-            {
-                todayMondstadtCharacter5 ??= dataViewModel.Characters?
-                    .Where(c => c.Star.ToRank() == 5 
-                    && c.Talent is not null 
-                    && c.Talent.IsMondstadt() 
-                    && c.Talent.IsTodaysTalent(SelectedDayOfWeek?.Value));
-                return todayMondstadtCharacter5;
-            }
+            return new(
+                metadata.DailyTalents
+                    .First(t => t.Source == talentName)
+                    .SetAvailability(dayOfWeek == DayOfWeek.Sunday || (int)dayOfWeek % 3 == position),
+                metadata.Characters
+                    .Where(c => c.Talent!.Source == talentName)
+                    .ToList());
         }
 
-        private IEnumerable<Character>? todayMondstadtCharacter4;
-        public IEnumerable<Character>? TodayMondstadtCharacter4
+        private Indexed<WeaponMaterial, DataModelWeapon> IndexedFromMaterialName(string materialName, DayOfWeek dayOfWeek, int position)
         {
-            get
-            {
-                todayMondstadtCharacter4 ??= dataViewModel.Characters?
-                    .Where(c => c.Star.ToRank() == 4 
-                    && c.Talent is not null 
-                    && c.Talent.IsMondstadt() 
-                    && c.Talent.IsTodaysTalent(SelectedDayOfWeek?.Value));
-                return todayMondstadtCharacter4;
-            }
+            return new(
+                metadata.DailyWeapons
+                    .First(t => t.Source == materialName)
+                    .SetAvailability(dayOfWeek == DayOfWeek.Sunday || (int)dayOfWeek % 3 == position),
+                metadata.Weapons
+                    .Where(c => c.Ascension!.Source == materialName)
+                    .ToList());
         }
 
-        private IEnumerable<DataModelWeapon>? todayMondstadtWeapon5;
-        public IEnumerable<DataModelWeapon>? TodayMondstadtWeapon5
+        /// <summary>
+        /// 表示一个国家的日常信息
+        /// </summary>
+        internal record City
         {
-            get
+            /// <summary>
+            /// 构造一个新的国家实例
+            /// </summary>
+            /// <param name="name">城市名称</param>
+            /// <param name="source">城市图片Url</param>
+            /// <param name="characters">角色列表</param>
+            /// <param name="weapons">武器列表</param>
+            public City(string name, string source, IList<Indexed<Talent, Character>> characters, IList<Indexed<WeaponMaterial, DataModelWeapon>> weapons)
             {
-                todayMondstadtWeapon5 ??= dataViewModel.Weapons?
-                    .Where(w => w.Ascension != null 
-                    && w.Star.ToRank() == 5 
-                    && w.Ascension.IsMondstadt() 
-                    && w.Ascension.IsTodaysWeapon(SelectedDayOfWeek?.Value));
-                return todayMondstadtWeapon5;
+                Name = name;
+                Source = source;
+                Characters = characters;
+                Weapons = weapons;
             }
+
+            /// <summary>
+            /// 城市名称
+            /// </summary>
+            public string Name { get; set; }
+
+            /// <summary>
+            /// 城市图片Url
+            /// </summary>
+            public string Source { get; set; }
+
+            /// <summary>
+            /// 角色列表
+            /// </summary>
+            public IList<Indexed<Talent, Character>> Characters { get; set; }
+
+            /// <summary>
+            /// 武器列表
+            /// </summary>
+            public IList<Indexed<WeaponMaterial, DataModelWeapon>> Weapons { get; set; }
         }
-
-        private IEnumerable<DataModelWeapon>? todayMondstadtWeapon4;
-        public IEnumerable<DataModelWeapon>? TodayMondstadtWeapon4
-        {
-            get
-            {
-                todayMondstadtWeapon4 ??= dataViewModel.Weapons?
-                    .Where(w => w.Ascension != null 
-                    && w.Star.ToRank() == 4 
-                    && w.Ascension.IsMondstadt() 
-                    && w.Ascension.IsTodaysWeapon(SelectedDayOfWeek?.Value));
-                return todayMondstadtWeapon4;
-            }
-        }
-        #endregion
-
-        #region Liyue
-        private IEnumerable<Talent>? todayLiyueTalent;
-        public IEnumerable<Talent>? TodayLiyueTalent
-        {
-            get
-            {
-                todayLiyueTalent ??= dataViewModel.DailyTalents?
-                    .Where(i => i.IsTodaysTalent(SelectedDayOfWeek?.Value) && i.IsLiyue());
-                return todayLiyueTalent;
-            }
-        }
-
-        private IEnumerable<WeaponMaterial>? todayLiyueWeaponAscension;
-        public IEnumerable<WeaponMaterial>? TodayLiyueWeaponAscension
-        {
-            get
-            {
-                todayLiyueWeaponAscension ??= dataViewModel.DailyWeapons?
-                    .Where(i => i.IsTodaysWeapon(SelectedDayOfWeek?.Value) && i.IsLiyue());
-                return todayLiyueWeaponAscension;
-            }
-        }
-
-        private IEnumerable<Character>? todayLiyueCharacter5;
-        public IEnumerable<Character>? TodayLiyueCharacter5
-        {
-            get
-            {
-                todayLiyueCharacter5 ??= dataViewModel.Characters?
-                    .Where(c => c.Star.ToRank() == 5 
-                    && c.Talent is not null 
-                    && c.Talent.IsLiyue() 
-                    && c.Talent.IsTodaysTalent(SelectedDayOfWeek?.Value));
-                return todayLiyueCharacter5;
-            }
-        }
-
-        private IEnumerable<Character>? todayLiyueCharacter4;
-        public IEnumerable<Character>? TodayLiyueCharacter4
-        {
-            get
-            {
-                todayLiyueCharacter4 ??= dataViewModel.Characters?
-                    .Where(c => c.Star.ToRank() == 4 
-                    && c.Talent is not null 
-                    && c.Talent.IsLiyue() 
-                    && c.Talent.IsTodaysTalent(SelectedDayOfWeek?.Value));
-                return todayLiyueCharacter4;
-            }
-        }
-
-        private IEnumerable<DataModelWeapon>? todayLiyueWeapon5;
-        public IEnumerable<DataModelWeapon>? TodayLiyueWeapon5
-        {
-            get
-            {
-                todayLiyueWeapon5 ??= dataViewModel.Weapons?
-                    .Where(w => w.Ascension != null 
-                    && w.Star.ToRank() == 5 
-                    && w.Ascension.IsLiyue() 
-                    && w.Ascension.IsTodaysWeapon(SelectedDayOfWeek?.Value));
-                return todayLiyueWeapon5;
-            }
-        }
-
-        private IEnumerable<DataModelWeapon>? todayLiyueWeapon4;
-        public IEnumerable<DataModelWeapon>? TodayLiyueWeapon4
-        {
-            get
-            {
-                todayLiyueWeapon4 ??= dataViewModel.Weapons?
-                    .Where(w => w.Ascension != null 
-                    && w.Star.ToRank() == 4 
-                    && w.Ascension.IsLiyue() 
-                    && w.Ascension.IsTodaysWeapon(SelectedDayOfWeek?.Value));
-                return todayLiyueWeapon4;
-            }
-        }
-        #endregion
-
-        #region Inazuma
-        private IEnumerable<Talent>? todayInazumaTalent;
-        public IEnumerable<Talent>? TodayInazumaTalent
-        {
-            get
-            {
-                todayInazumaTalent ??= dataViewModel.DailyTalents?
-                    .Where(i => i.IsTodaysTalent(SelectedDayOfWeek?.Value) && i.IsInazuma());
-                return todayInazumaTalent;
-            }
-        }
-
-        private IEnumerable<WeaponMaterial>? todayInazumaWeaponAscension;
-        public IEnumerable<WeaponMaterial>? TodayInazumaWeaponAscension
-        {
-            get
-            {
-                todayInazumaWeaponAscension ??= dataViewModel.DailyWeapons?
-                    .Where(i => i.IsTodaysWeapon(SelectedDayOfWeek?.Value) && i.IsInazuma());
-                return todayInazumaWeaponAscension;
-            }
-        }
-
-        private IEnumerable<Character>? todayInazumaCharacter5;
-        public IEnumerable<Character>? TodayInazumaCharacter5
-        {
-            get
-            {
-                todayInazumaCharacter5 ??= dataViewModel.Characters?
-                    .Where(c => c.Star.ToRank() == 5 
-                    && c.Talent is not null 
-                    && c.Talent.IsInazuma() 
-                    && c.Talent.IsTodaysTalent(SelectedDayOfWeek?.Value));
-                return todayInazumaCharacter5;
-            }
-        }
-
-        private IEnumerable<Character>? todayInazumaCharacter4;
-        public IEnumerable<Character>? TodayInazumaCharacter4
-        {
-            get
-            {
-                todayInazumaCharacter4 ??= dataViewModel.Characters?
-                    .Where(c => c.Star.ToRank() == 4 
-                    && c.Talent is not null 
-                    && c.Talent.IsInazuma() 
-                    && c.Talent.IsTodaysTalent(SelectedDayOfWeek?.Value));
-                return todayInazumaCharacter4;
-            }
-        }
-
-        private IEnumerable<DataModelWeapon>? todayInazumaWeapon5;
-        public IEnumerable<DataModelWeapon>? TodayInazumaWeapon5
-        {
-            get
-            {
-                todayInazumaWeapon5 ??= dataViewModel.Weapons?
-                    .Where(w => w.Ascension != null 
-                    && w.Star.ToRank() == 5 
-                    && w.Ascension.IsInazuma() 
-                    && w.Ascension.IsTodaysWeapon(SelectedDayOfWeek?.Value));               
-                return todayInazumaWeapon5;
-            }
-        }
-
-        private IEnumerable<DataModelWeapon>? todayInazumaWeapon4;
-
-
-        public IEnumerable<DataModelWeapon>? TodayInazumaWeapon4
-        {
-            get
-            {
-                todayInazumaWeapon4 ??= dataViewModel.Weapons?
-                    .Where(w => w.Ascension != null 
-                    && w.Star.ToRank() == 4 
-                    && w.Ascension.IsInazuma() 
-                    && w.Ascension.IsTodaysWeapon(SelectedDayOfWeek?.Value));
-                return todayInazumaWeapon4;
-            }
-        }
-        #endregion
     }
 }

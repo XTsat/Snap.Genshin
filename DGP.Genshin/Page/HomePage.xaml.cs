@@ -1,16 +1,22 @@
-﻿using DGP.Genshin.ViewModel;
+﻿using DGP.Genshin.Control.Infrastructure.Concurrent;
+using DGP.Genshin.ViewModel;
+using Snap.Core.DependencyInjection;
 
 namespace DGP.Genshin.Page
 {
     /// <summary>
-    /// TO-DO:
-    /// 实现Post的刷新
+    /// 主页
     /// </summary>
-    public partial class HomePage : System.Windows.Controls.Page
+    [View(InjectAs.Transient)]
+    internal partial class HomePage : AsyncPage
     {
-        public HomePage()
+        /// <summary>
+        /// 构造一个新的主页
+        /// </summary>
+        /// <param name="vm">视图模型</param>
+        public HomePage(HomeViewModel vm)
+            : base(vm)
         {
-            DataContext = App.GetViewModel<HomeViewModel>();
             InitializeComponent();
         }
     }

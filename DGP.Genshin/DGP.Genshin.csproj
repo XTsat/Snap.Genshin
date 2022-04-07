@@ -9,6 +9,7 @@
     <ApplicationIcon>SG_Logo.ico</ApplicationIcon>
     <Platforms>AnyCPU;x64</Platforms>
     <DebugType>embedded</DebugType>
+    <ProduceReferenceAssembly>False</ProduceReferenceAssembly>
   </PropertyGroup>
   
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -30,15 +31,20 @@
 
   <ItemGroup>
     <None Remove="Resources\Eff_Sc_StarSky01.png" />
+    <None Remove="Resources\ElementProgress.png" />
     <None Remove="Resources\Segoe Fluent Icons.ttf" />
     <None Remove="Resources\UI_BagTabIcon_Avatar.png" />
     <None Remove="Resources\UI_BagTabIcon_Weapon.png" />
     <None Remove="Resources\UI_BtnIcon_Gacha.png" />
+    <None Remove="Resources\UI_ChapterIcon_Hutao.png" />
     <None Remove="Resources\UI_EmotionIcon72.png" />
     <None Remove="Resources\UI_GachaSettlement_Bg2.png" />
     <None Remove="Resources\UI_ImgSign_ItemIcon.png" />
     <None Remove="Resources\UI_ItemIcon_210.png" />
-    <None Remove="SG_Logo.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="SG_Logo.ico" />
   </ItemGroup>
 
   <ItemGroup>
@@ -46,53 +52,61 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="EPPlus" Version="5.8.5" />
+    <PackageReference Include="EPPlus" Version="5.8.8" />
     <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="1.1.0" />
     <PackageReference Include="ini-parser-netstandard" Version="2.5.2" />
     <PackageReference Include="Microsoft.AppCenter.Analytics" Version="4.3.0" />
     <PackageReference Include="Microsoft.AppCenter.Crashes" Version="4.3.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="6.0.0" />
-    <PackageReference Include="Microsoft.Toolkit.Mvvm" Version="7.1.2" />
     <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.2" />
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.1072.54" />
+    <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" Version="17.1.46">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.1150.38" />
     <PackageReference Include="Microsoft.Xaml.Behaviors.Wpf" Version="1.1.39" />
     <PackageReference Include="ModernWpfUI" Version="0.9.4" />
     <PackageReference Include="Octokit" Version="0.50.0" />
-    <PackageReference Include="WPF-UI" Version="1.2.2-prerelease120" />
+    <PackageReference Include="StyleCop.Analyzers" Version="1.2.0-beta.406">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="WPF-UI" Version="1.2.2" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Common\Snap.Core.DependencyInjection\Snap.Core.DependencyInjection.csproj" />
     <ProjectReference Include="..\Common\Snap.Core.Logging\Snap.Core.Logging.csproj" />
     <ProjectReference Include="..\Common\Snap.Core.Mvvm\Snap.Core.Mvvm.csproj" />
-    <ProjectReference Include="..\Common\Snap.Exception\Snap.Exception.csproj" />
     <ProjectReference Include="..\Common\Snap.Extension.Enumerable\Snap.Extension.Enumerable.csproj" />
     <ProjectReference Include="..\Common\Snap.Net.Afdian\Snap.Net.Afdian.csproj" />
     <ProjectReference Include="..\Common\Snap.Net.Download\Snap.Net.Download.csproj" />
     <ProjectReference Include="..\Common\Snap.Net.Networking\Snap.Net.Networking.csproj" />
     <ProjectReference Include="..\Common\Snap.Net.QueryString\Snap.Net.QueryString.csproj" />
+    <ProjectReference Include="..\Common\Snap.Reflection\Snap.Reflection.csproj" />
     <ProjectReference Include="..\Common\Snap.Threading\Snap.Threading.csproj" />
     <ProjectReference Include="..\Common\Snap.Win32\Snap.Win32.csproj" />
     <ProjectReference Include="..\DGP.Genshin.FPSUnlocking\DGP.Genshin.FPSUnlocking.csproj" />
     <ProjectReference Include="..\DGP.Genshin.HutaoAPI\DGP.Genshin.HutaoAPI.csproj" />
     <ProjectReference Include="..\DGP.Genshin.MiHoYoAPI\DGP.Genshin.MiHoYoAPI.csproj" />
   </ItemGroup>
+  
+  <ItemGroup>
+    <ProjectReference Include="..\DGP.Genshin.SourceGeneration\DGP.Genshin.SourceGeneration.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
 
   <ItemGroup>
     <Resource Include="Resources\Eff_Sc_StarSky01.png" />
+    <Resource Include="Resources\ElementProgress.png" />
     <Resource Include="Resources\Segoe Fluent Icons.ttf" />
     <Resource Include="Resources\UI_BagTabIcon_Avatar.png" />
     <Resource Include="Resources\UI_BagTabIcon_Weapon.png" />
     <Resource Include="Resources\UI_BtnIcon_Gacha.png" />
+    <Resource Include="Resources\UI_ChapterIcon_Hutao.png" />
     <Resource Include="Resources\UI_EmotionIcon72.png" />
     <Resource Include="Resources\UI_GachaSettlement_Bg2.png" />
     <Resource Include="Resources\UI_ImgSign_ItemIcon.png" />
     <Resource Include="Resources\UI_ItemIcon_210.png" />
-    <Resource Include="SG_Logo.ico" />
   </ItemGroup>
-  
-  <Target Name="PreBuild" BeforeTargets="PreBuildEvent">
-    <Exec Command="..\Build\net6.0\DGP.Snap.AutoVersion.exe &quot;$(ProjectDir)&quot;" />
-  </Target>
 
 </Project>

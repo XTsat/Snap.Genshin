@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
-    <_LastSelectedProfileId>D:\Development\Projects\Snap.Genshin\DGP.Genshin\Properties\PublishProfiles\StandardProfile.pubxml</_LastSelectedProfileId>
+    <_LastSelectedProfileId>D:\Develop\Projects\Snap.Genshin\DGP.Genshin\Properties\PublishProfiles\StandardProfile.pubxml</_LastSelectedProfileId>
   </PropertyGroup>
   <ItemGroup>
     <ApplicationDefinition Update="App.xaml">
@@ -9,28 +9,22 @@
     </ApplicationDefinition>
   </ItemGroup>
   <ItemGroup>
+    <Compile Update="Control\BlockingView.xaml.cs">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Update="Control\ExceptionWindow.xaml.cs">
       <SubType>Code</SubType>
     </Compile>
     <Compile Update="Control\GenshinElement\AnnouncementWindow.xaml.cs">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Update="Control\GenshinElement\DailyNoteWindow.xaml.cs">
+    <Compile Update="Control\GenshinElement\ElementsProgressBar.xaml.cs">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Update="Control\Title\DailyNoteTitleBarButton.xaml.cs">
+    <Compile Update="Control\GenshinElement\GachaStatistic\StatisticCard.xaml.cs">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Update="Control\Title\JourneyLogTitleBarButton.xaml.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Update="Control\Title\LaunchTitleBarButton.xaml.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Update="Control\Title\SignInTitleBarButton.xaml.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Update="Control\Title\UserInfoTitleBarButton.xaml.cs">
+    <Compile Update="Control\GenshinElement\HutaoStatistic\UploadDialog.xaml.cs">
       <SubType>Code</SubType>
     </Compile>
     <Compile Update="Control\GenshinElement\CharacterGachaSplashWindow.xaml.cs">
@@ -39,10 +33,16 @@
     <Compile Update="Control\WebView2RuntimeWindow.xaml.cs">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Update="Control\WhatsNewWindow.xaml.cs">
+    <Compile Update="Control\WebViewLobby\WebViewEntryDialog.xaml.cs">
       <SubType>Code</SubType>
     </Compile>
     <Compile Update="Page\HutaoStatisticPage.xaml.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Update="Page\ImplementationPage.xaml.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Update="Page\LaunchPage.xaml.cs">
       <SubType>Code</SubType>
     </Compile>
     <Compile Update="Page\PluginPage.xaml.cs">
@@ -57,36 +57,45 @@
     <Compile Update="Page\SponsorPage.xaml.cs">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Update="Page\UserPage.xaml.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Update="Page\WebViewHostPage.xaml.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Update="Page\WebViewLobbyPage.xaml.cs">
+      <SubType>Code</SubType>
+    </Compile>
   </ItemGroup>
   <ItemGroup>
+    <Page Update="Control\BlockingView.xaml">
+      <SubType>Designer</SubType>
+    </Page>
     <Page Update="Control\ExceptionWindow.xaml">
       <SubType>Designer</SubType>
     </Page>
     <Page Update="Control\GenshinElement\AnnouncementWindow.xaml">
       <SubType>Designer</SubType>
     </Page>
-    <Page Update="Control\GenshinElement\DailyNoteWindow.xaml">
+    <Page Update="Control\GenshinElement\ElementsProgressBar.xaml">
       <SubType>Designer</SubType>
     </Page>
-    <Page Update="Control\Title\DailyNoteTitleBarButton.xaml">
+    <Page Update="Control\GenshinElement\GachaStatistic\StatisticCard.xaml">
       <SubType>Designer</SubType>
     </Page>
-    <Page Update="Control\Title\JourneyLogTitleBarButton.xaml">
+    <Page Update="Control\GenshinElement\HutaoStatistic\UploadDialog.xaml">
       <SubType>Designer</SubType>
     </Page>
-    <Page Update="Control\Title\LaunchTitleBarButton.xaml">
+    <Page Update="Control\ModernStyle\Dark.xaml">
       <SubType>Designer</SubType>
     </Page>
-    <Page Update="Control\Title\SignInTitleBarButton.xaml">
-      <SubType>Designer</SubType>
-    </Page>
-    <Page Update="Control\Title\UserInfoTitleBarButton.xaml">
+    <Page Update="Control\ModernStyle\Light.xaml">
       <SubType>Designer</SubType>
     </Page>
     <Page Update="Control\WebView2RuntimeWindow.xaml">
       <SubType>Designer</SubType>
     </Page>
-    <Page Update="Control\WhatsNewWindow.xaml">
+    <Page Update="Control\WebViewLobby\WebViewEntryDialog.xaml">
       <SubType>Designer</SubType>
     </Page>
     <Page Update="Control\WPFUIStyle\Dark.xaml">
@@ -98,13 +107,19 @@
     <Page Update="Control\WPFUIStyle\OverrideStyle.xaml">
       <SubType>Designer</SubType>
     </Page>
-    <Page Update="MainWindow.xaml">
+    <Resource Update="MainWindow.xaml">
       <SubType>Designer</SubType>
-    </Page>
+    </Resource>
     <Page Update="Control\GenshinElement\CharacterGachaSplashWindow.xaml">
       <SubType>Designer</SubType>
     </Page>
     <Page Update="Page\HutaoStatisticPage.xaml">
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Update="Page\ImplementationPage.xaml">
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Update="Page\LaunchPage.xaml">
       <SubType>Designer</SubType>
     </Page>
     <Page Update="Page\PluginPage.xaml">
@@ -120,6 +135,15 @@
       <SubType>Designer</SubType>
     </Page>
     <Page Update="Page\SponsorPage.xaml">
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Update="Page\UserPage.xaml">
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Update="Page\WebViewHostPage.xaml">
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Update="Page\WebViewLobbyPage.xaml">
       <SubType>Designer</SubType>
     </Page>
   </ItemGroup>

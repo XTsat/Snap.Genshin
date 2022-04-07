@@ -1,5 +1,4 @@
 ﻿using DGP.Genshin.DataModel.Helper;
-using Newtonsoft.Json;
 using System.Windows.Media;
 
 namespace DGP.Genshin.DataModel
@@ -9,8 +8,28 @@ namespace DGP.Genshin.DataModel
     /// </summary>
     public abstract class Primitive : KeySource
     {
+        /// <summary>
+        /// 名称
+        /// </summary>
         public string? Name { get; set; }
-        public string? Star { get; set; } = StarHelper.FromRank(1);
-        [JsonIgnore] public SolidColorBrush? StarSolid => StarHelper.ToSolid(Star);
+
+        /// <summary>
+        /// 等级底图Url
+        /// </summary>
+        public string? Star { get; set; } = StarHelper.FromInt32Rank(1);
+
+        /// <summary>
+        /// 等级底色
+        /// </summary>
+        public SolidColorBrush? StarSolid
+        {
+            get => StarHelper.ToSolid(Star);
+        }
+
+        /// <summary>
+        /// 获取角标Url
+        /// </summary>
+        /// <returns>角标Url</returns>
+        public abstract string? GetBadge();
     }
 }

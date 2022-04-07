@@ -1,12 +1,9 @@
-﻿using DGP.Genshin.Helper;
-using DGP.Genshin.Message;
-using DGP.Genshin.Service.Abstratcion;
-using Microsoft.Toolkit.Mvvm.Messaging;
+﻿using DGP.Genshin.Service.Abstraction.Setting;
+using Newtonsoft.Json;
 using Snap.Core.DependencyInjection;
 using Snap.Core.Logging;
 using Snap.Data.Json;
-using System;
-using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.IO;
 
 namespace DGP.Genshin.Service
@@ -19,10 +16,15 @@ namespace DGP.Genshin.Service
     {
         private readonly string settingFile = PathContext.Locate("settings.json");
 
-        private Dictionary<string, object?> settings = new();
+        private ConcurrentDictionary<string, object?> settings = new();
 
-        public T? GetOrDefault<T>(string key, T? defaultValue)
+        /// <inheritdoc/>
+        public T Get<T>(SettingDefinition<T> definition)
         {
+            string key = definition.Name;
+            T defaultValue = definition.DefaultValue;
+            Func<object, T>? converter = definition.Converter;
+
             if (!settings.TryGetValue(key, out object? value))
             {
                 settings[key] = defaultValue;
@@ -30,63 +32,60 @@ namespace DGP.Genshin.Service
             }
             else
             {
-                return (T?)value;
+                if (value is T tValue)
+                {
+                    return tValue;
+                }
+                else
+                {
+                    if (converter is null)
+                    {
+                        return (T)value!;
+                    }
+                    else
+                    {
+                        return converter.Invoke(value!);
+                    }
+                }
             }
         }
 
-        public T GetOrDefault<T>(string key, T defaultValue, Func<object, T> converter)
+        /// <inheritdoc/>
+        public void Set<T>(SettingDefinition<T> definition, object? value, bool log = false)
         {
-            if (!settings.TryGetValue(key, out object? value))
+            string key = definition.Name;
+            if (log)
             {
-                settings[key] = defaultValue;
-                return defaultValue;
+                this.Log($"setting {key} to {value} internally without notify");
             }
-            else
-            {
-                return converter.Invoke(value!);
-            }
-        }
 
-        public T? GetComplexOrDefault<T>(string key, T? defaultValue) where T : class
-        {
-            if (!settings.TryGetValue(key, out object? value))
-            {
-                settings[key] = defaultValue;
-                return defaultValue;
-            }
-            else
-            {
-                return value is null ? null : Json.ToObject<T>(value.ToString()!);
-            }
-        }
-
-        public object? this[string key]
-        {
-            set
-            {
-                settings[key] = value;
-                App.Messenger.Send(new SettingChangedMessage(key, value));
-            }
-        }
-
-        public void SetValueNoNotify(string key, object value)
-        {
-            this.Log($"setting {key} to {value} internally without notify");
             settings[key] = value;
         }
 
+        /// <inheritdoc/>
         public void Initialize()
         {
             if (File.Exists(settingFile))
             {
-                settings = Json.ToObjectOrNew<Dictionary<string, object?>>(File.ReadAllText(settingFile));
+                try
+                {
+                    settings = Json.ToObjectOrNew<ConcurrentDictionary<string, object?>>(File.ReadAllText(settingFile));
+
+                    // only catch those exception that json file corrupted
+                }
+                catch (JsonReaderException)
+                {
+                    settings = new();
+                }
             }
-            this.Log("initialized");
         }
 
+        /// <inheritdoc/>
         public void UnInitialize()
         {
-            File.WriteAllText(settingFile, Json.Stringify(settings));
+            string settingString = Json.Stringify(settings);
+            this.Log(settingString);
+            File.WriteAllText(settingFile, settingString);
         }
     }
 }

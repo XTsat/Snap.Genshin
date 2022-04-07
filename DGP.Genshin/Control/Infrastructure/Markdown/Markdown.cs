@@ -1,22 +1,30 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Net.Cache;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
 using System.Windows.Documents;
-using System.Windows.Input;
 using System.Windows.Markup;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
 namespace DGP.Genshin.Control.Infrastructure.Markdown
 {
-    public class Markdown : DependencyObject
+    [SuppressMessage("", "SA1001")]
+    [SuppressMessage("", "SA1028")]
+    [SuppressMessage("", "SA1113")]
+    [SuppressMessage("", "SA1116")]
+    [SuppressMessage("", "SA1117")]
+    [SuppressMessage("", "SA1118")]
+    [SuppressMessage("", "SA1201")]
+    [SuppressMessage("", "SA1202")]
+    [SuppressMessage("", "SA1204")]
+    [SuppressMessage("", "SA1309")]
+    [SuppressMessage("", "SA1413")]
+    [SuppressMessage("", "SA1600")]
+    public sealed class Markdown : DependencyObject
     {
         /// <summary>
         /// maximum nested depth of [] and () supported by the transform; implementation detail
@@ -46,12 +54,14 @@ namespace DGP.Genshin.Control.Infrastructure.Markdown
         public Style DocumentStyle
         {
             get => (Style)GetValue(DocumentStyleProperty);
+
             set => SetValue(DocumentStyleProperty, value);
         }
 
         public Style NormalParagraphStyle
         {
             get => (Style)GetValue(NormalParagraphStyleProperty);
+
             set => SetValue(NormalParagraphStyleProperty, value);
         }
 
@@ -66,6 +76,7 @@ namespace DGP.Genshin.Control.Infrastructure.Markdown
         public Style Heading1Style
         {
             get => (Style)GetValue(Heading1StyleProperty);
+
             set => SetValue(Heading1StyleProperty, value);
         }
 
@@ -76,6 +87,7 @@ namespace DGP.Genshin.Control.Infrastructure.Markdown
         public Style Heading2Style
         {
             get => (Style)GetValue(Heading2StyleProperty);
+
             set => SetValue(Heading2StyleProperty, value);
         }
 
@@ -86,6 +98,7 @@ namespace DGP.Genshin.Control.Infrastructure.Markdown
         public Style Heading3Style
         {
             get => (Style)GetValue(Heading3StyleProperty);
+
             set => SetValue(Heading3StyleProperty, value);
         }
 
@@ -96,6 +109,7 @@ namespace DGP.Genshin.Control.Infrastructure.Markdown
         public Style Heading4Style
         {
             get => (Style)GetValue(Heading4StyleProperty);
+
             set => SetValue(Heading4StyleProperty, value);
         }
 
@@ -106,6 +120,7 @@ namespace DGP.Genshin.Control.Infrastructure.Markdown
         public Style CodeStyle
         {
             get => (Style)GetValue(CodeStyleProperty);
+
             set => SetValue(CodeStyleProperty, value);
         }
 
@@ -116,6 +131,7 @@ namespace DGP.Genshin.Control.Infrastructure.Markdown
         public Style LinkStyle
         {
             get => (Style)GetValue(LinkStyleProperty);
+
             set => SetValue(LinkStyleProperty, value);
         }
 
@@ -126,6 +142,7 @@ namespace DGP.Genshin.Control.Infrastructure.Markdown
         public Style ImageStyle
         {
             get => (Style)GetValue(ImageStyleProperty);
+
             set => SetValue(ImageStyleProperty, value);
         }
 
@@ -136,6 +153,7 @@ namespace DGP.Genshin.Control.Infrastructure.Markdown
         public Style SeparatorStyle
         {
             get => (Style)GetValue(SeparatorStyleProperty);
+
             set => SetValue(SeparatorStyleProperty, value);
         }
 
@@ -146,6 +164,7 @@ namespace DGP.Genshin.Control.Infrastructure.Markdown
         public string AssetPathRoot
         {
             get => (string)GetValue(AssetPathRootProperty);
+
             set => SetValue(AssetPathRootProperty, value);
         }
 
@@ -155,6 +174,7 @@ namespace DGP.Genshin.Control.Infrastructure.Markdown
         public Style TableStyle
         {
             get => (Style)GetValue(TableStyleProperty);
+
             set => SetValue(TableStyleProperty, value);
         }
 
@@ -164,6 +184,7 @@ namespace DGP.Genshin.Control.Infrastructure.Markdown
         public Style TableHeaderStyle
         {
             get => (Style)GetValue(TableHeaderStyleProperty);
+
             set => SetValue(TableHeaderStyleProperty, value);
         }
 
@@ -173,6 +194,7 @@ namespace DGP.Genshin.Control.Infrastructure.Markdown
         public Style TableBodyStyle
         {
             get => (Style)GetValue(TableBodyStyleProperty);
+
             set => SetValue(TableBodyStyleProperty, value);
         }
 
@@ -254,7 +276,7 @@ namespace DGP.Genshin.Control.Infrastructure.Markdown
             }
 
             // split on two or more newlines
-            string[] grafs = _newlinesMultiple.Split(_newlinesLeadingTrailing.Replace(text, ""));
+            string[] grafs = _newlinesMultiple.Split(_newlinesLeadingTrailing.Replace(text, string.Empty));
 
             foreach (string g in grafs)
             {
@@ -365,7 +387,7 @@ namespace DGP.Genshin.Control.Infrastructure.Markdown
                 )",
             GetNestedBracketsPattern(),
             GetNestedParensPatternWithWhiteSpace()),
-                  RegexOptions.Singleline | RegexOptions.IgnorePatternWhitespace | RegexOptions.Compiled);
+            RegexOptions.Singleline | RegexOptions.IgnorePatternWhitespace | RegexOptions.Compiled);
 
         private static readonly Regex _anchorInline = new(
             string.Format(CultureInfo.InvariantCulture, @"
@@ -385,7 +407,7 @@ namespace DGP.Genshin.Control.Infrastructure.Markdown
                         )?                  # title is optional
                     \)
                 )", GetNestedBracketsPattern(), GetNestedParensPattern()),
-                  RegexOptions.Singleline | RegexOptions.IgnorePatternWhitespace | RegexOptions.Compiled);
+            RegexOptions.Singleline | RegexOptions.IgnorePatternWhitespace | RegexOptions.Compiled);
 
         /// <summary>
         /// Turn Markdown images into images
@@ -455,13 +477,13 @@ namespace DGP.Genshin.Control.Infrastructure.Markdown
 
                 BindingExpressionBase bindingExpression = BindingOperations.SetBinding(image, FrameworkElement.WidthProperty, binding);
 
-                void downloadCompletedHandler(object? sender, EventArgs e)
+                void DownloadCompletedHandler(object? sender, EventArgs e)
                 {
-                    imgSource.DownloadCompleted -= downloadCompletedHandler;
+                    imgSource.DownloadCompleted -= DownloadCompletedHandler;
                     bindingExpression.UpdateTarget();
                 }
 
-                imgSource.DownloadCompleted += downloadCompletedHandler;
+                imgSource.DownloadCompleted += DownloadCompletedHandler;
             }
             else
             {
@@ -570,7 +592,6 @@ namespace DGP.Genshin.Control.Infrastructure.Markdown
             string header = match.Groups[1].Value;
             int level = match.Groups[2].Value.StartsWith("=", StringComparison.Ordinal) ? 1 : 2;
 
-            //TODO: Style the paragraph based on the header level
             return CreateHeader(level, RunSpanGamut(header.Trim()));
         }
 
@@ -851,12 +872,7 @@ namespace DGP.Genshin.Control.Infrastructure.Markdown
                 return trimRitm[1..^1].Split('|');
             }).ToList();
 
-            int maxColCount =
-                Math.Max(
-                    Math.Max(styles.Length, headers.Length),
-                    rowList.Select(ritm => ritm.Length).Max()
-                );
-
+            int maxColCount = Math.Max(Math.Max(styles.Length, headers.Length), rowList.Select(ritm => ritm.Length).Max());
 
             // table style
             List<TextAlignment?> aligns = new();
@@ -864,27 +880,32 @@ namespace DGP.Genshin.Control.Infrastructure.Markdown
             {
                 char firstChar = colStyleTxt.First();
                 char lastChar = colStyleTxt.Last();
+
                 // center
                 if (firstChar == ':' && lastChar == ':')
                 {
                     aligns.Add(TextAlignment.Center);
                 }
+
                 // right
                 else if (lastChar == ':')
                 {
                     aligns.Add(TextAlignment.Right);
                 }
+
                 // left
                 else if (firstChar == ':')
                 {
                     aligns.Add(TextAlignment.Left);
                 }
+
                 // default
                 else
                 {
                     aligns.Add(null);
                 }
             }
+
             while (aligns.Count < maxColCount)
             {
                 aligns.Add(null);
@@ -926,6 +947,7 @@ namespace DGP.Genshin.Control.Infrastructure.Markdown
                 TableRow tableBody = CreateTableRow(rowAry, aligns);
                 tableBodyRG.Rows.Add(tableBody);
             }
+
             table.RowGroups.Add(tableBodyRG);
 
             return table;
@@ -977,28 +999,6 @@ namespace DGP.Genshin.Control.Infrastructure.Markdown
                 throw new ArgumentNullException(nameof(text));
             }
 
-            //    * You can use multiple backticks as the delimiters if you want to
-            //        include literal backticks in the code span. So, this input:
-            //
-            //        Just type ``foo `bar` baz`` at the prompt.
-            //
-            //        Will translate to:
-            //
-            //          <p>Just type <code>foo `bar` baz</code> at the prompt.</p>
-            //
-            //        There's no arbitrary limit to the number of backticks you
-            //        can use as delimters. If you need three consecutive backticks
-            //        in your code, use four for delimiters, etc.
-            //
-            //    * You can use spaces to get literal backticks at the edges:
-            //
-            //          ... type `` `bar` `` ...
-            //
-            //        Turns to:
-            //
-            //          ... type <code>`bar`</code> ...         
-            //
-
             return Evaluate(text, _codeSpan, CodeSpanEvaluator, defaultHandler);
         }
 
@@ -1010,8 +1010,8 @@ namespace DGP.Genshin.Control.Infrastructure.Markdown
             }
 
             string span = match.Groups[2].Value;
-            span = Regex.Replace(span, @"^[ ]*", ""); // leading whitespace
-            span = Regex.Replace(span, @"[ ]*$", ""); // trailing whitespace
+            span = Regex.Replace(span, @"^[ ]*", string.Empty); // leading whitespace
+            span = Regex.Replace(span, @"[ ]*$", string.Empty); // trailing whitespace
 
             Run result = new(span);
             if (CodeStyle != null)
@@ -1075,16 +1075,6 @@ namespace DGP.Genshin.Control.Infrastructure.Markdown
             return Create<Bold, Inline>(RunSpanGamut(content));
         }
 
-        private static readonly Regex _outDent = new(@"^[ ]{1," + _tabWidth + @"}", RegexOptions.Multiline | RegexOptions.Compiled);
-
-        /// <summary>
-        /// Remove one level of line-leading spaces
-        /// </summary>
-        private string Outdent(string block)
-        {
-            return _outDent.Replace(block, "");
-        }
-
         /// <summary>
         /// convert all tabs to _tabWidth spaces; 
         /// standardizes line endings from DOS (CR LF) or Mac (CR) to UNIX (LF); 
@@ -1128,9 +1118,10 @@ namespace DGP.Genshin.Control.Infrastructure.Markdown
                             line.Length = 0;
                             valid = false;
                         }
+
                         break;
                     case '\t':
-                        int width = _tabWidth - line.Length % _tabWidth;
+                        int width = _tabWidth - (line.Length % _tabWidth);
                         for (int k = 0; k < width; k++)
                         {
                             line.Append(' ');

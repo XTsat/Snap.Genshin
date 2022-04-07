@@ -1,42 +1,30 @@
-﻿using System;
-using System.ComponentModel;
-using System.Windows;
-
-namespace DGP.Genshin.Control.GenshinElement
+﻿namespace DGP.Genshin.Control.GenshinElement
 {
     /// <summary>
-    /// CharacterGachaSplashWindwo.xaml 的交互逻辑
+    /// 角色卡池立绘展示窗口
+    /// 不支持中途更改展示内容
     /// </summary>
-    public partial class CharacterGachaSplashWindow : Window
+    public sealed partial class CharacterGachaSplashWindow : Window
     {
+        private static readonly DependencyProperty SourceProperty = Property<CharacterGachaSplashWindow>.Depend<string>(nameof(Source));
+
+        /// <summary>
+        /// 构造一个新的角色卡池立绘窗口
+        /// </summary>
         public CharacterGachaSplashWindow()
         {
             DataContext = this;
             InitializeComponent();
         }
+
+        /// <summary>
+        /// 待展示的图片地址
+        /// </summary>
         public string? Source
         {
-            get { return (string)GetValue(SourceProperty); }
-            set { SetValue(SourceProperty, value); }
-        }
-        public static readonly DependencyProperty SourceProperty =
-            DependencyProperty.Register(nameof(Source), typeof(string), typeof(CharacterGachaSplashWindow));
+            get => (string)GetValue(SourceProperty);
 
-        private bool isAlreadyClosed = false;
-
-        protected override void OnClosing(CancelEventArgs e)
-        {
-            isAlreadyClosed = true;
-            base.OnClosing(e);
-        }
-
-        protected override void OnDeactivated(EventArgs e)
-        {
-            base.OnDeactivated(e);
-            if (!isAlreadyClosed)
-            {
-                DialogResult = true;
-            }
+            set => SetValue(SourceProperty, value);
         }
     }
 }

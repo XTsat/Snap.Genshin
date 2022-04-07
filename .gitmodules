@@ -19,9 +19,6 @@
 [submodule "Common/Snap.Data.Utility"]
 	path = Common/Snap.Data.Utility
 	url = https://github.com/DGP-Studio/Snap.Data.Utility.git
-[submodule "Common/Snap.Exception"]
-	path = Common/Snap.Exception
-	url = https://github.com/DGP-Studio/Snap.Exception.git
 [submodule "Common/Snap.Extension.Enumerable"]
 	path = Common/Snap.Extension.Enumerable
 	url = https://github.com/DGP-Studio/Snap.Extension.Enumerable.git
@@ -49,3 +46,9 @@
 [submodule "DGP.Genshin.HutaoAPI"]
 	path = DGP.Genshin.HutaoAPI
 	url = https://github.com/DGP-Studio/DGP.Genshin.HutaoAPI.git
+[submodule "Common/Snap.Reflection"]
+	path = Common/Snap.Reflection
+	url = https://github.com/DGP-Studio/Snap.Reflection.git
+[submodule "Plugins/SG.Plugin.Achievement.Exporter"]
+	path = Plugins/SG.Plugin.Achievement.Exporter
+	url = https://github.com/DGP-Studio/SG.Plugin.Achievement.Exporter.git

@@ -1,20 +1,28 @@
-﻿using DGP.Genshin.ViewModel;
+﻿using DGP.Genshin.Control.Infrastructure.Concurrent;
+using DGP.Genshin.ViewModel;
+using Snap.Core.DependencyInjection;
 using System.Collections.Generic;
-using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 
 namespace DGP.Genshin.Page
 {
-    public partial class PromotionCalculatePage : System.Windows.Controls.Page
+    /// <summary>
+    /// 养成计算页面
+    /// </summary>
+    [View(InjectAs.Transient)]
+    internal partial class PromotionCalculatePage : AsyncPage
     {
-        public PromotionCalculatePage()
+        /// <summary>
+        /// 构造一个新的养成计算页面
+        /// </summary>
+        /// <param name="vm">视图模型</param>
+        public PromotionCalculatePage(PromotionCalculateViewModel vm)
+            : base(vm)
         {
-            DataContext = App.GetViewModel<PromotionCalculateViewModel>();
             InitializeComponent();
         }
 
-        #region NumberBoxDeleteButtonRemover
         private void NumberBoxValueChanged(ModernWpf.Controls.NumberBox sender, ModernWpf.Controls.NumberBoxValueChangedEventArgs args)
         {
             List<Button> buttons = new();
@@ -35,20 +43,26 @@ namespace DGP.Genshin.Page
             }
         }
 
-        internal static void FindChildren<T>(DependencyObject parent, List<T> results) where T : DependencyObject
+        private void FindChildren<T>(DependencyObject parent, List<T> results)
+            where T : DependencyObject
         {
             int count = VisualTreeHelper.GetChildrenCount(parent);
             for (int i = 0; i < count; i++)
             {
                 DependencyObject current = VisualTreeHelper.GetChild(parent, i);
-                if ((current.GetType()).Equals(typeof(T)) /*|| (current.GetType().GetTypeInfo().IsSubclassOf(typeof(T)))*/)
+                if ((current.GetType()).Equals(typeof(T)))
                 {
                     T asType = (T)current;
                     results.Add(asType);
                 }
+
                 FindChildren<T>(current, results);
             }
         }
-        #endregion
+
+        private void PageUnloaded(object sender, RoutedEventArgs e)
+        {
+            ((PromotionCalculateViewModel)DataContext).CloseUICommand.Execute(null);
+        }
     }
 }

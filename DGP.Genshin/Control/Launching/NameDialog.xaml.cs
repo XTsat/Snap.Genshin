@@ -1,52 +1,54 @@
-﻿using DGP.Genshin.DataModel.Launching;
-using ModernWpf.Controls;
-using System.ComponentModel;
-using System.Runtime.CompilerServices;
+﻿using DGP.Genshin.Control.Infrastructure.Observable;
+using DGP.Genshin.DataModel.Launching;
 using System.Threading.Tasks;
 
 namespace DGP.Genshin.Control.Launching
 {
     /// <summary>
-    /// NameDialog.xaml 的交互逻辑
+    /// 启动游戏账号命名对话框
     /// </summary>
-    public partial class NameDialog : ContentDialog, INotifyPropertyChanged
+    public sealed partial class NameDialog : ObservableContentDialog
     {
         private string? input;
         private GenshinAccount? targetAccount;
 
-        public string? Input { get => input; set => Set(ref input, value); }
-        public GenshinAccount? TargetAccount { get => targetAccount; set => Set(ref targetAccount, value); }
-
+        /// <summary>
+        /// 构造一个新的命名对话框
+        /// </summary>
         public NameDialog()
         {
             DataContext = this;
             InitializeComponent();
         }
 
+        /// <summary>
+        /// 输入
+        /// </summary>
+        public string? Input
+        {
+            get => input;
+
+            set => Set(ref input, value);
+        }
+
+        /// <summary>
+        /// 目标账号
+        /// </summary>
+        public GenshinAccount? TargetAccount
+        {
+            get => targetAccount;
+
+            set => Set(ref targetAccount, value);
+        }
+
+        /// <summary>
+        /// 获取用户输入
+        /// </summary>
+        /// <returns>用户输入的字符串或 <see langword="null"/></returns>
         public async Task<string?> GetInputAsync()
         {
             await ShowAsync();
             return Input;
         }
-
-        #region INotifyPropertyChanged
-        public event PropertyChangedEventHandler? PropertyChanged;
-
-        protected void Set<T>(ref T storage, T value, [CallerMemberName] string propertyName = "")
-        {
-            if (Equals(storage, value))
-            {
-                return;
-            }
-
-            storage = value;
-            OnPropertyChanged(propertyName);
-        }
-
-        protected void OnPropertyChanged(string propertyName)
-        {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-        }
-        #endregion
     }
 }

@@ -1,12 +1,13 @@
-﻿using DGP.Genshin.Message;
-using DGP.Genshin.Service.Abstratcion;
-using Microsoft.Toolkit.Mvvm.Input;
-using Microsoft.Toolkit.Mvvm.Messaging;
+﻿using CommunityToolkit.Mvvm.Messaging;
+using DGP.Genshin.Factory.Abstraction;
+using DGP.Genshin.Message.Internal;
+using DGP.Genshin.Service.Abstraction;
+using DGP.Genshin.Service.Abstraction.IntegrityCheck;
 using Snap.Core.DependencyInjection;
 using Snap.Core.Mvvm;
+using Snap.Data.Primitive;
 using Snap.Net.Networking;
 using System.Threading.Tasks;
-using System.Windows.Input;
 
 namespace DGP.Genshin.ViewModel
 {
@@ -14,10 +15,11 @@ namespace DGP.Genshin.ViewModel
     /// 启动界面视图模型
     /// </summary>
     [ViewModel(InjectAs.Transient)]
-    public class SplashViewModel : ObservableObject2
+    internal class SplashViewModel : ObservableObject2
     {
         private readonly ICookieService cookieService;
         private readonly IIntegrityCheckService integrityCheckService;
+        private readonly IMessenger messenger;
 
         private bool isCookieVisible = false;
         private bool isSplashNotVisible = false;
@@ -26,71 +28,120 @@ namespace DGP.Genshin.ViewModel
         private string? currentInfo;
         private int? totalCount;
         private double percent;
-        private bool isCheckingIntegrity;
 
+        /// <summary>
+        /// 构造一个新的启动界面视图模型
+        /// </summary>
+        /// <param name="cookieService">cookie服务</param>
+        /// <param name="integrityCheckService">完整性检查服务</param>
+        /// <param name="asyncRelayCommandFactory">异步命令工厂</param>
+        /// <param name="messenger">消息器</param>
+        public SplashViewModel(
+            ICookieService cookieService,
+            IIntegrityCheckService integrityCheckService,
+            IAsyncRelayCommandFactory asyncRelayCommandFactory,
+            IMessenger messenger)
+        {
+            this.cookieService = cookieService;
+            this.integrityCheckService = integrityCheckService;
+            this.messenger = messenger;
+
+            SetCookieCommand = asyncRelayCommandFactory.Create(SetCookieAsync);
+            OpenUICommand = asyncRelayCommandFactory.Create(OpenUIAsync);
+        }
+
+        /// <summary>
+        /// 指示设置cookie功能是否可见
+        /// </summary>
         public bool IsCookieVisible
         {
             get => isCookieVisible;
+
             set => SetPropertyAndCallbackOnCompletion(ref isCookieVisible, value, TrySendCompletedMessage);
         }
 
-        [PropertyChangedCallback]
-        private void TrySendCompletedMessage()
-        {
-            if (IsCookieVisible == false && integrityCheckService.IntegrityCheckCompleted)
-            {
-                App.Messenger.Send(new SplashInitializationCompletedMessage(this));
-            }
-        }
         /// <summary>
         /// 设置为 <see cref="true"/> 以触发淡入主界面动画
         /// </summary>
         public bool IsSplashNotVisible
         {
             get => isSplashNotVisible;
+
             set => SetProperty(ref isSplashNotVisible, value);
         }
+
+        /// <summary>
+        /// 当前状态提示文本
+        /// </summary>
         public string CurrentStateDescription
         {
             get => currentStateDescription;
+
             set => SetProperty(ref currentStateDescription, value);
         }
+
+        /// <summary>
+        /// 当前检查的个数
+        /// </summary>
         public int CurrentCount
         {
             get => currentCount;
+
             set => SetProperty(ref currentCount, value);
         }
+
+        /// <summary>
+        /// 当前检查的提示文本
+        /// </summary>
         public string? CurrentInfo
         {
             get => currentInfo;
+
             set => SetProperty(ref currentInfo, value);
         }
+
+        /// <summary>
+        /// 检查的总个数
+        /// </summary>
         public int? TotalCount
         {
             get => totalCount;
+
             set => SetProperty(ref totalCount, value);
         }
+
+        /// <summary>
+        /// 进度
+        /// </summary>
         public double Percent
         {
             get => percent;
+
             set => SetProperty(ref percent, value);
         }
-        public bool IsCheckingIntegrity
-        {
-            get => isCheckingIntegrity;
-            set => SetProperty(ref isCheckingIntegrity, value);
-        }
 
+        /// <summary>
+        /// 完整性检查监视器
+        /// </summary>
+        public WorkWatcher IntegrityChecking { get; set; } = new();
+
+        /// <summary>
+        /// 打开界面触发的命令
+        /// </summary>
         public ICommand OpenUICommand { get; }
+
+        /// <summary>
+        /// 设置Cookie命令
+        /// </summary>
         public ICommand SetCookieCommand { get; }
 
-        public SplashViewModel(ICookieService cookieService, IIntegrityCheckService integrityCheckService)
+        /// <summary>
+        /// 通知 <see cref="SplashViewModel"/> 结束初始化
+        /// </summary>
+        public void CompleteInitialization()
         {
-            this.cookieService = cookieService;
-            this.integrityCheckService = integrityCheckService;
-
-            SetCookieCommand = new AsyncRelayCommand(SetCookieAsync);
-            OpenUICommand = new AsyncRelayCommand(OpenUIAsync);
+            CurrentStateDescription = "完成";
+            IsSplashNotVisible = true;
         }
 
         private async Task SetCookieAsync()
@@ -119,15 +170,28 @@ namespace DGP.Genshin.ViewModel
 
         private async Task PerformIntegrityServiceCheckAsync()
         {
-            IsCheckingIntegrity = true;
-            await integrityCheckService.CheckMetadataIntegrityAsync(state =>
+            Progress<IIntegrityCheckService.IIntegrityCheckState> progress = new();
+            progress.ProgressChanged += (_, state) =>
             {
                 CurrentCount = state.CurrentCount;
                 Percent = (state.CurrentCount * 1D / TotalCount) ?? 0D;
                 TotalCount = state.TotalCount;
                 CurrentInfo = state.Info;
-            });
-            IsCheckingIntegrity = false;
+            };
+
+            using (IntegrityChecking.Watch())
+            {
+                await integrityCheckService.CheckMetadataIntegrityAsync(progress);
+            }
+        }
+
+        [PropertyChangedCallback]
+        private void TrySendCompletedMessage()
+        {
+            if (IsCookieVisible == false && integrityCheckService.IntegrityChecking.IsCompleted)
+            {
+                messenger.Send(new SplashInitializationCompletedMessage(this));
+            }
         }
     }
 }

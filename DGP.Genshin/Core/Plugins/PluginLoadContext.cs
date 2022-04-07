@@ -1,4 +1,5 @@
-﻿using System.Reflection;
+﻿using Snap.Core.Logging;
+using System.Reflection;
 using System.Runtime.Loader;
 
 namespace DGP.Genshin.Core.Plugins
@@ -9,19 +10,35 @@ namespace DGP.Genshin.Core.Plugins
     internal class PluginLoadContext : AssemblyLoadContext
     {
         private readonly AssemblyDependencyResolver internalResolver;
+        private readonly AssemblyName appAssemblyName;
 
+        /// <summary>
+        /// 构造一个新的插件加载上下文
+        /// </summary>
+        /// <param name="pluginPath">插件路径</param>
         public PluginLoadContext(string pluginPath)
+            : base(true)
         {
             internalResolver = new AssemblyDependencyResolver(pluginPath);
+            appAssemblyName = Assembly.GetExecutingAssembly().GetName();
         }
 
+        /// <inheritdoc/>
         protected override Assembly? Load(AssemblyName assemblyName)
         {
-            string? assemblyPath = internalResolver.ResolveAssemblyToPath(assemblyName);
-            if (assemblyPath != null)
+            // replace DGP.Genshin ref version to current release version
+            // seems useless, but just keep this there
+            if (assemblyName.Name == appAssemblyName.Name)
             {
+                assemblyName.Version = appAssemblyName.Version;
+            }
+
+            if (internalResolver.ResolveAssemblyToPath(assemblyName) is string assemblyPath)
+            {
+                this.Log($"Load {assemblyName} from {assemblyPath}");
                 return LoadFromAssemblyPath(assemblyPath);
             }
+
             return null;
         }
     }

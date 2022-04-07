@@ -1,13 +1,21 @@
 ﻿using DGP.Genshin.ViewModel;
-using ModernWpf.Controls;
+using Snap.Core.DependencyInjection;
 
 namespace DGP.Genshin.Page
 {
-    public partial class GachaStatisticPage : ModernWpf.Controls.Page
+    /// <summary>
+    /// 祈愿记录界面
+    /// </summary>
+    [View(InjectAs.Transient)]
+    internal partial class GachaStatisticPage : ModernWpf.Controls.Page
     {
-        public GachaStatisticPage()
+        /// <summary>
+        /// 祈愿记录页面
+        /// </summary>
+        /// <param name="vm">视图模型</param>
+        public GachaStatisticPage(GachaStatisticViewModel vm)
         {
-            DataContext = App.GetViewModel<GachaStatisticViewModel>();
+            DataContext = vm;
             InitializeComponent();
         }
     }

@@ -1,34 +1,44 @@
-﻿using System;
-using System.Windows;
-using System.Windows.Controls.Primitives;
+﻿using System.Windows.Controls.Primitives;
 
 namespace DGP.Genshin.Control.Infrastructure
 {
-    public class DesiredWidthUniformGrid : UniformGrid
+    /// <summary>
+    /// 自适应宽度网格
+    /// 会将栏数设为最接近设定栏宽的
+    /// </summary>
+    public sealed class DesiredWidthUniformGrid : UniformGrid
     {
+        private static readonly DependencyProperty ColumnDesiredWidthProperty =
+            Property<DesiredWidthUniformGrid>.Depend(nameof(ColumnDesiredWidth), 0D, OnColumnDesiredWidthChanged);
+
+        /// <summary>
+        /// 栏的期望宽度
+        /// </summary>
         public double ColumnDesiredWidth
         {
-            get { return (double)GetValue(ColumnDesiredWidthProperty); }
-            set { SetValue(ColumnDesiredWidthProperty, value); }
-        }
-        public static readonly DependencyProperty ColumnDesiredWidthProperty =
-            DependencyProperty.Register(nameof(ColumnDesiredWidth), typeof(double), typeof(DesiredWidthUniformGrid),
-                new PropertyMetadata(0D, OnColumnDesiredWidthChanged));
+            get => (double)GetValue(ColumnDesiredWidthProperty);
 
-        private static void OnColumnDesiredWidthChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-        {
-            ((DesiredWidthUniformGrid)d).SetCorrectColumn();
+            set => SetValue(ColumnDesiredWidthProperty, value);
         }
 
+        /// <inheritdoc/>
         protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
         {
             SetCorrectColumn();
             base.OnRenderSizeChanged(sizeInfo);
         }
 
+        private static void OnColumnDesiredWidthChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            ((DesiredWidthUniformGrid)d).SetCorrectColumn();
+        }
+
         private void SetCorrectColumn()
         {
-            Columns = (int)Math.Round(ActualWidth / ColumnDesiredWidth);
+            if (ColumnDesiredWidth > 0)
+            {
+                Columns = (int)Math.Round(ActualWidth / ColumnDesiredWidth);
+            }
         }
     }
 }

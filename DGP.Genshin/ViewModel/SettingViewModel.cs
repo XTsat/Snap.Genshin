@@ -1,226 +1,331 @@
-﻿using DGP.Genshin.Helper;
+﻿using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
+using DGP.Genshin.Core.Notification;
+using DGP.Genshin.Factory.Abstraction;
 using DGP.Genshin.Message;
 using DGP.Genshin.Page;
-using DGP.Genshin.Service.Abstratcion;
-using Microsoft.Toolkit.Mvvm.Input;
-using Microsoft.Toolkit.Mvvm.Messaging;
+using DGP.Genshin.Service.Abstraction.Setting;
+using DGP.Genshin.Service.Abstraction.Updating;
+using Microsoft.Toolkit.Uwp.Notifications;
 using ModernWpf;
 using Snap.Core.DependencyInjection;
-using Snap.Core.Logging;
 using Snap.Core.Mvvm;
 using Snap.Data.Primitive;
+using Snap.Data.Utility;
 using Snap.Win32;
-using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using System.Reflection;
 using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Input;
 
 namespace DGP.Genshin.ViewModel
 {
     /// <summary>
     /// 为需要及时响应的设置项提供 <see cref="Observable"/> 模型支持
-    /// 仅供 <see cref="Page.SettingsPage"/> 使用
     /// </summary>
-    [ViewModel(InjectAs.Singleton)]
-    public class SettingViewModel : ObservableRecipient2, IRecipient<SettingChangedMessage>, IRecipient<UpdateProgressedMessage>
+    [ViewModel(InjectAs.Transient)]
+    internal class SettingViewModel : ObservableRecipient2,
+        IRecipient<UpdateProgressedMessage>,
+        IRecipient<AdaptiveBackgroundOpacityChangedMessage>
     {
-        private readonly ISettingService settingService;
         private readonly IUpdateService updateService;
-        private ISettingService SettingService => settingService;
 
+        private bool skipCacheCheck;
+        private string versionString;
+        private string userId;
+        private AutoRun autoRun = new();
+        private NamedValue<ApplicationTheme?> selectedTheme;
+        private bool isTaskBarIconEnabled;
+        private bool closeMainWindowAfterInitializaion;
+        private UpdateProgressedMessage updateInfo;
+        private double backgroundOpacity;
+        private bool isBackgroundOpacityAdaptive;
+        private bool isBannerWithNoItemVisible;
+        private NamedValue<UpdateAPI> currentUpdateAPI;
+
+        /// <summary>
+        /// 构造一个新的设置视图模型
+        /// </summary>
+        /// <param name="updateService">更新服务</param>
+        /// <param name="asyncRelayCommandFactory">异步命令工厂</param>
+        /// <param name="messenger">消息器</param>
+        public SettingViewModel(IUpdateService updateService, IAsyncRelayCommandFactory asyncRelayCommandFactory, IMessenger messenger)
+            : base(messenger)
+        {
+            this.updateService = updateService;
+
+            selectedTheme = Themes.First(x => x.Value == Setting2.AppTheme);
+            currentUpdateAPI = UpdateAPIs.First(x => x.Value == Setting2.UpdateAPI);
+
+            SkipCacheCheck = Setting2.SkipCacheCheck;
+            IsTaskBarIconEnabled = Setting2.IsTaskBarIconEnabled;
+            CloseMainWindowAfterInitializaion = Setting2.CloseMainWindowAfterInitializaion;
+            BackgroundOpacity = Setting2.BackgroundOpacity;
+            IsBackgroundOpacityAdaptive = Setting2.IsBackgroundOpacityAdaptive;
+            IsBannerWithNoItemVisible = Setting2.IsBannerWithNoItemVisible;
+
+            Version v = App.Current.Version;
+            VersionString = $"Snap Genshin {v.Major} - Version {v.Minor}.{v.Build} Build {v.Revision}";
+            UserId = User.Id;
+
+            UpdateInfo = UpdateProgressedMessage.Default;
+            ReleaseNote = updateService.ReleaseNote;
+
+            CheckUpdateCommand = asyncRelayCommandFactory.Create(CheckUpdateAsync);
+            CopyUserIdCommand = new RelayCommand(CopyUserIdToClipBoard);
+
+            SponsorUICommand = new RelayCommand(NavigateToSponsorPage);
+            OpenBackgroundFolderCommand = new RelayCommand(() => FileExplorer.Open(PathContext.Locate("Background")));
+            OpenCacheFolderCommand = new RelayCommand(() => FileExplorer.Open(PathContext.Locate("Cache")));
+            NextWallpaperCommand = new RelayCommand(SwitchToNextWallpaper);
+            OpenImplementationPageCommand = new RelayCommand(() => messenger.Send(new NavigateRequestMessage(typeof(ImplementationPage))));
+        }
+
+        /// <summary>
+        /// 可选的主题色
+        /// </summary>
         public List<NamedValue<ApplicationTheme?>> Themes { get; } = new()
         {
             new("浅色", ApplicationTheme.Light),
             new("深色", ApplicationTheme.Dark),
             new("系统默认", null),
         };
-        public List<NamedValue<TimeSpan>> ResinAutoRefreshTime => new()
+
+        /// <summary>
+        /// 可选的更新通道
+        /// </summary>
+        public List<NamedValue<UpdateAPI>> UpdateAPIs { get; } = new()
         {
-            new("8 分钟 | 1 树脂", TimeSpan.FromMinutes(8)),
-            new("30 分钟 | 3.75 树脂", TimeSpan.FromMinutes(30)),
-            new("40 分钟 | 5 树脂", TimeSpan.FromMinutes(40)),
-            new("1 小时 | 7.5 树脂", TimeSpan.FromMinutes(60))
+            new("正式通道", UpdateAPI.PatchAPI),
+            new("预览通道", UpdateAPI.GithubAPI),
         };
 
-        private bool showFullUID;
-        private bool autoDailySignInOnLaunch;
-        private bool skipCacheCheck;
-        private bool signInSilently;
-        private bool updateUseFastGit;
-
-        private string versionString;
-        private string userId;
-        private AutoRun autoRun = new();
-        private NamedValue<ApplicationTheme?> selectedTheme;
-        private NamedValue<TimeSpan> selectedResinAutoRefreshTime;
-        private bool isTaskBarIconEnabled;
-        private bool closeMainWindowAfterInitializaion;
-        private UpdateProgressedMessage updateInfo;
-
-        #region Need Initalize
-        //需要在 Initalize Receive 中添加字段的初始化
-        public bool ShowFullUID
-        {
-            get => showFullUID; set
-            {
-                SettingService.SetValueNoNotify(Setting.ShowFullUID, value);
-                SetProperty(ref showFullUID, value);
-            }
-        }
-        public bool AutoDailySignInOnLaunch
-        {
-            get => autoDailySignInOnLaunch; set
-            {
-                SettingService.SetValueNoNotify(Setting.AutoDailySignInOnLaunch, value);
-                SetProperty(ref autoDailySignInOnLaunch, value);
-            }
-        }
+        /// <summary>
+        /// 跳过完整性检查
+        /// </summary>
         public bool SkipCacheCheck
         {
-            get => skipCacheCheck; set
+            get => skipCacheCheck;
+
+            set
             {
-                SettingService.SetValueNoNotify(Setting.SkipCacheCheck, value);
+                Setting2.SkipCacheCheck.Set(value, false);
                 SetProperty(ref skipCacheCheck, value);
             }
         }
-        public bool SignInSilently
-        {
-            get => signInSilently; set
-            {
-                SettingService.SetValueNoNotify(Setting.SignInSilently, value);
-                SetProperty(ref signInSilently, value);
-            }
-        }
-        public bool UpdateUseFastGit
-        {
-            get => updateUseFastGit; set
-            {
-                SettingService.SetValueNoNotify(Setting.UpdateUseFastGit, value);
-                SetProperty(ref updateUseFastGit, value);
-            }
-        }
+
+        /// <summary>
+        /// 是否启用任务栏图标
+        /// </summary>
         public bool IsTaskBarIconEnabled
         {
             get => isTaskBarIconEnabled;
+
             set
             {
-                SettingService.SetValueNoNotify(Setting.IsTaskBarIconEnabled, value);
+                Setting2.IsTaskBarIconEnabled.Set(value, false);
                 SetProperty(ref isTaskBarIconEnabled, value);
             }
         }
+
+        /// <summary>
+        /// 在初始化完成后关闭主窗体
+        /// </summary>
         public bool CloseMainWindowAfterInitializaion
         {
             get => closeMainWindowAfterInitializaion;
+
             set
             {
-                SettingService.SetValueNoNotify(Setting.CloseMainWindowAfterInitializaion, value);
+                Setting2.CloseMainWindowAfterInitializaion.Set(value, false);
                 SetProperty(ref closeMainWindowAfterInitializaion, value);
             }
         }
-        #endregion
 
-        #region Not Need
-        //不需要显式初始化的字段
+        /// <summary>
+        /// 背景不透明度
+        /// </summary>
+        public double BackgroundOpacity
+        {
+            get => backgroundOpacity;
+
+            set
+            {
+                Setting2.BackgroundOpacity.Set(value, false);
+                Messenger.Send(new BackgroundOpacityChangedMessage(value));
+                SetProperty(ref backgroundOpacity, value);
+            }
+        }
+
+        /// <summary>
+        /// 是否启用自适应背景不透明度
+        /// </summary>
+        public bool IsBackgroundOpacityAdaptive
+        {
+            get => isBackgroundOpacityAdaptive;
+
+            set
+            {
+                Setting2.IsBackgroundOpacityAdaptive.Set(value, false);
+                SetProperty(ref isBackgroundOpacityAdaptive, value);
+            }
+        }
+
+        /// <summary>
+        /// 版本字符串
+        /// </summary>
         public string VersionString
         {
             get => versionString;
+
             [MemberNotNull("versionString")]
             set => SetProperty(ref versionString, value);
         }
+
+        /// <summary>
+        /// 用户设备ID
+        /// </summary>
         public string UserId
         {
             get => userId;
+
             [MemberNotNull(nameof(userId))]
             set => userId = value;
         }
-        public AutoRun AutoRun { get => autoRun; set => autoRun = value; }
+
+        /// <summary>
+        /// 是否显示未抽取的卡池
+        /// </summary>
+        public bool IsBannerWithNoItemVisible
+        {
+            get => isBannerWithNoItemVisible;
+
+            set
+            {
+                Setting2.IsBannerWithNoItemVisible.Set(value, false);
+                SetProperty(ref isBannerWithNoItemVisible, value);
+            }
+        }
+
+        /// <summary>
+        /// 自启
+        /// </summary>
+        public AutoRun AutoRun
+        {
+            get => autoRun;
+
+            set => autoRun = value;
+        }
+
+        /// <summary>
+        /// 选中的主题
+        /// </summary>
         public NamedValue<ApplicationTheme?> SelectedTheme
         {
             get => selectedTheme;
+
             set => SetPropertyAndCallbackOnCompletion(ref selectedTheme, value, v => { UpdateAppTheme(v!); });
         }
-        [PropertyChangedCallback]
-        private void UpdateAppTheme(NamedValue<ApplicationTheme?> value)
+
+        /// <summary>
+        /// 当前的更新通道
+        /// </summary>
+        public NamedValue<UpdateAPI> CurrentUpdateAPI
         {
-            SettingService[Setting.AppTheme] = value.Value;
-            ThemeManager.Current.ApplicationTheme = SettingService.GetOrDefault(Setting.AppTheme, null, Setting.ApplicationThemeConverter);
+            get => currentUpdateAPI;
+
+            set => SetPropertyAndCallbackOnCompletion(ref currentUpdateAPI, value, v => Setting2.UpdateAPI.Set(v.Value));
         }
-        public NamedValue<TimeSpan> SelectedResinAutoRefreshTime
-        {
-            get => selectedResinAutoRefreshTime;
-            set => SetPropertyAndCallbackOnCompletion(ref selectedResinAutoRefreshTime, value,
-                v => settingService[Setting.ResinRefreshMinutes] = v!.Value.TotalMinutes);
-        }
+
+        /// <summary>
+        /// 更新信息
+        /// </summary>
         public UpdateProgressedMessage UpdateInfo
         {
             get => updateInfo;
+
             [MemberNotNull(nameof(updateInfo))]
             set => SetProperty(ref updateInfo, value);
         }
 
+        /// <summary>
+        /// 更新日志
+        /// </summary>
+        public string? ReleaseNote { get; }
+
+        /// <summary>
+        /// 检查更新命令
+        /// </summary>
         public ICommand CheckUpdateCommand { get; }
+
+        /// <summary>
+        /// 复制用户设备ID命令
+        /// </summary>
         public ICommand CopyUserIdCommand { get; }
-        public ICommand SignInImmediatelyCommand { get; }
+
+        /// <summary>
+        /// 打开赞助页面命令
+        /// </summary>
         public ICommand SponsorUICommand { get; }
-        #endregion
 
-        public SettingViewModel(ISettingService settingService, IUpdateService updateService, IMessenger messenger) : base(messenger)
+        /// <summary>
+        /// 打开缓存文件夹命令
+        /// </summary>
+        public ICommand OpenCacheFolderCommand { get; }
+
+        /// <summary>
+        /// 打开背景图片文件夹
+        /// </summary>
+        public ICommand OpenBackgroundFolderCommand { get; }
+
+        /// <summary>
+        /// 下一张背景图片命令
+        /// </summary>
+        public ICommand NextWallpaperCommand { get; }
+
+        /// <summary>
+        /// 打开可切换实现页面命令
+        /// </summary>
+        public ICommand OpenImplementationPageCommand { get; }
+
+        /// <inheritdoc/>
+        public void Receive(UpdateProgressedMessage message)
         {
-            this.settingService = settingService;
-            this.updateService = updateService;
-
-            ApplicationTheme? theme = settingService.GetOrDefault(Setting.AppTheme, null, Setting.ApplicationThemeConverter);
-            selectedTheme = Themes.First(x => x.Value == theme);
-
-            double minutes = settingService.GetOrDefault(Setting.ResinRefreshMinutes, 8.0);
-            selectedResinAutoRefreshTime = ResinAutoRefreshTime.First(s => s.Value.TotalMinutes == minutes)!;
-
-            Initialize();
-
-            UpdateInfo = UpdateProgressedMessage.Default;
-
-            CheckUpdateCommand = new AsyncRelayCommand(CheckUpdateAsync);
-            CopyUserIdCommand = new RelayCommand(CopyUserIdToClipBoard);
-            SignInImmediatelyCommand = new AsyncRelayCommand(MainWindow.SignInAllAccountsRolesAsync);
-            SponsorUICommand = new RelayCommand(NavigateToSponsorPage);
+            UpdateInfo = message;
         }
 
-        [MemberNotNull(nameof(versionString)), MemberNotNull(nameof(userId))]
-        private void Initialize()
+        /// <inheritdoc/>
+        public void Receive(AdaptiveBackgroundOpacityChangedMessage message)
         {
-            //不能直接设置属性 会导致触发通知操作进而造成死循环
-            showFullUID = SettingService.GetOrDefault(Setting.ShowFullUID, false);
-            autoDailySignInOnLaunch = SettingService.GetOrDefault(Setting.AutoDailySignInOnLaunch, false);
-            skipCacheCheck = SettingService.GetOrDefault(Setting.SkipCacheCheck, false);
-            signInSilently = SettingService.GetOrDefault(Setting.SignInSilently, false);
-            updateUseFastGit = SettingService.GetOrDefault(Setting.UpdateUseFastGit, false);
-            isTaskBarIconEnabled = SettingService.GetOrDefault(Setting.IsTaskBarIconEnabled, true);
-            closeMainWindowAfterInitializaion = SettingService.GetOrDefault(Setting.CloseMainWindowAfterInitializaion, false);
-
-            //version
-            Version v = Assembly.GetExecutingAssembly().GetName().Version!;
-            VersionString = $"DGP.Genshin - version {v.Major}.{v.Minor}.{v.Build} Build {v.Revision}";
-            UserId = User.Id;
+            BackgroundOpacity = message.Value;
         }
 
         private void CopyUserIdToClipBoard()
         {
             Clipboard.Clear();
-            Clipboard2.SetText(UserId);
+            try
+            {
+                Clipboard.SetText(UserId);
+            }
+            catch
+            {
+                try
+                {
+                    Clipboard2.SetText(UserId);
+                }
+                catch
+                {
+                }
+            }
         }
+
         private void NavigateToSponsorPage()
         {
-            App.Messenger.Send(new NavigateRequestMessage(typeof(SponsorPage)));
+            Messenger.Send(new NavigateRequestMessage(typeof(SponsorPage)));
         }
+
         private async Task CheckUpdateAsync()
         {
             UpdateState result = await updateService.CheckUpdateStateAsync();
-            //update debug code here
-            //result = UpdateState.NeedUpdate;
             switch (result)
             {
                 case UpdateState.NeedUpdate:
@@ -228,52 +333,46 @@ namespace DGP.Genshin.ViewModel
                         await updateService.DownloadAndInstallPackageAsync();
                         break;
                     }
+
+                case UpdateState.IsNewestRelease:
+                    {
+                        new ToastContentBuilder()
+                            .AddText("已是最新发行版")
+                            .SafeShow();
+                        break;
+                    }
+
+                case UpdateState.IsInsiderVersion:
+                    {
+                        new ToastContentBuilder()
+                            .AddText("当前为开发测试版")
+                            .SafeShow();
+                        break;
+                    }
+
+                case UpdateState.NotAvailable:
+                    {
+                        new ToastContentBuilder()
+                            .AddText("检查更新失败")
+                            .SafeShow();
+                        break;
+                    }
+
                 default:
                     break;
             }
         }
 
-        /// <summary>
-        /// 当以编程形式改变设置时触发
-        /// </summary>
-        /// <param name="key"></param>
-        /// <param name="value"></param>
-        public void Receive(SettingChangedMessage message)
+        private void SwitchToNextWallpaper()
         {
-            string key = message.Value.Key;
-            object? value = message.Value.Value;
-
-            this.Log($"setting {key} changed: {value}");
-            switch (key)
-            {
-                case Setting.ShowFullUID:
-                    ShowFullUID = value is not null && (bool)value;
-                    break;
-                case Setting.AutoDailySignInOnLaunch:
-                    AutoDailySignInOnLaunch = value is not null && (bool)value;
-                    break;
-                case Setting.SkipCacheCheck:
-                    SkipCacheCheck = value is not null && (bool)value;
-                    break;
-                case Setting.SignInSilently:
-                    SignInSilently = value is not null && (bool)value;
-                    break;
-                case Setting.UpdateUseFastGit:
-                    UpdateUseFastGit = value is not null && (bool)value;
-                    break;
-                case Setting.IsTaskBarIconEnabled:
-                    IsTaskBarIconEnabled = value is not null && (bool)value;
-                    break;
-                case Setting.CloseMainWindowAfterInitializaion:
-                    CloseMainWindowAfterInitializaion = value is not null && (bool)value;
-                    break;
-                default:
-                    break;
-            }
+            Messenger.Send(new BackgroundChangeRequestMessage());
         }
-        public void Receive(UpdateProgressedMessage message)
+
+        [PropertyChangedCallback]
+        private void UpdateAppTheme(NamedValue<ApplicationTheme?> value)
         {
-            UpdateInfo = message;
+            Setting2.AppTheme.Set(value.Value);
+            ThemeManager.Current.ApplicationTheme = Setting2.AppTheme;
         }
     }
 }

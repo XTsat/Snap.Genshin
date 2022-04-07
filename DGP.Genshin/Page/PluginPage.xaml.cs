@@ -1,16 +1,21 @@
 ﻿using DGP.Genshin.ViewModel;
-using System.Windows.Controls;
+using Snap.Core.DependencyInjection;
 
 namespace DGP.Genshin.Page
 {
     /// <summary>
-    /// PluginPage.xaml 的交互逻辑
+    /// 插件管理页面
     /// </summary>
-    public partial class PluginPage : System.Windows.Controls.Page
+    [View(InjectAs.Transient)]
+    internal partial class PluginPage : System.Windows.Controls.Page
     {
-        public PluginPage()
+        /// <summary>
+        /// 构造一个新的插件管理页面
+        /// </summary>
+        /// <param name="vm">视图模型</param>
+        public PluginPage(PluginViewModel vm)
         {
-            DataContext = App.GetViewModel<PluginViewModel>();
+            DataContext = vm;
             InitializeComponent();
         }
     }

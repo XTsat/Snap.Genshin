@@ -1,65 +1,77 @@
-﻿using Snap.Data.Primitive;
-using System.Diagnostics;
-using System.Windows;
+﻿using System.Diagnostics;
 using System.Windows.Controls;
 using System.Windows.Media.Animation;
 
 namespace DGP.Genshin.Control.GenshinElement
 {
-    public partial class ContentIcon : Button
+    /// <summary>
+    /// 角色武器图标
+    /// </summary>
+    public sealed partial class ContentIcon : Button
     {
+        private const string FadeInAnimationKey = "FadeInAnimation";
+
+        private static readonly DependencyProperty BackgroundUrlProperty = Property<ContentIcon>.Depend<string>(nameof(BackgroundUrl));
+        private static readonly DependencyProperty ForegroundUrlProperty = Property<ContentIcon>.Depend<string>(nameof(ForegroundUrl));
+        private static readonly DependencyProperty BadgeUrlProperty = Property<ContentIcon>.Depend<string>(nameof(BadgeUrl));
+        private static readonly DependencyProperty IsCountVisibleProperty = Property<ContentIcon>.Depend<bool>(nameof(IsCountVisible), false);
+
+        /// <summary>
+        /// 构造一个新的图标
+        /// </summary>
         public ContentIcon()
         {
-            PresentationTraceSources.DataBindingSource.Switch.Level = System.Diagnostics.SourceLevels.Critical;
-            Loaded += ContentIcon_Loaded;
+            PresentationTraceSources.DataBindingSource.Switch.Level = SourceLevels.Critical;
+            Loaded += ContentIconLoaded;
             InitializeComponent();
         }
-        private void ContentIcon_Loaded(object sender, RoutedEventArgs e)
-        {
-            Storyboard? storyBoard = FindResource("FadeInAnimation") as Storyboard;
-            storyBoard?.Begin();
-            //thus only affect first load
-            Loaded -= ContentIcon_Loaded;
-        }
 
+        /// <summary>
+        /// 背景Url
+        /// </summary>
         public string BackgroundUrl
         {
             get => (string)GetValue(BackgroundUrlProperty);
+
             set => SetValue(BackgroundUrlProperty, value);
         }
-        public static readonly DependencyProperty BackgroundUrlProperty =
-            DependencyProperty.Register("BackgroundUrl", typeof(string), typeof(ContentIcon), new PropertyMetadata(null));
 
+        /// <summary>
+        /// 前景Url
+        /// </summary>
         public string ForegroundUrl
         {
             get => (string)GetValue(ForegroundUrlProperty);
+
             set => SetValue(ForegroundUrlProperty, value);
         }
-        public static readonly DependencyProperty ForegroundUrlProperty =
-            DependencyProperty.Register("ForegroundUrl", typeof(string), typeof(ContentIcon), new PropertyMetadata(null));
 
+        /// <summary>
+        /// 角标Url
+        /// </summary>
         public string BadgeUrl
         {
             get => (string)GetValue(BadgeUrlProperty);
+
             set => SetValue(BadgeUrlProperty, value);
         }
-        public static readonly DependencyProperty BadgeUrlProperty =
-            DependencyProperty.Register("BadgeUrl", typeof(string), typeof(ContentIcon), new PropertyMetadata(null));
 
-        public string Text
-        {
-            get => (string)GetValue(TextProperty);
-            set => SetValue(TextProperty, value);
-        }
-        public static readonly DependencyProperty TextProperty =
-            DependencyProperty.Register("Text", typeof(string), typeof(ContentIcon), new PropertyMetadata(""));
-
+        /// <summary>
+        /// 数量是否可见
+        /// </summary>
         public bool IsCountVisible
         {
             get => (bool)GetValue(IsCountVisibleProperty);
+
             set => SetValue(IsCountVisibleProperty, value);
         }
-        public static readonly DependencyProperty IsCountVisibleProperty =
-            DependencyProperty.Register("IsCountVisible", typeof(bool), typeof(ContentIcon), new PropertyMetadata(BoxedValue.FalseBox));
+
+        private void ContentIconLoaded(object sender, RoutedEventArgs e)
+        {
+            (FindResource(FadeInAnimationKey) as Storyboard)?.Begin();
+
+            // thus only affect first load
+            Loaded -= ContentIconLoaded;
+        }
     }
 }

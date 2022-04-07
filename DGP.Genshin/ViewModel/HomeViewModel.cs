@@ -1,100 +1,96 @@
-﻿using DGP.Genshin.Control;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using DGP.Genshin.Control;
 using DGP.Genshin.Control.GenshinElement;
-using DGP.Genshin.Helper;
+using DGP.Genshin.Control.Infrastructure.Concurrent;
+using DGP.Genshin.Factory.Abstraction;
 using DGP.Genshin.MiHoYoAPI.Announcement;
-using Microsoft.Toolkit.Mvvm.ComponentModel;
-using Microsoft.Toolkit.Mvvm.Input;
+using DGP.Genshin.Service.Abstraction;
 using Snap.Core.DependencyInjection;
 using Snap.Core.Logging;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text.RegularExpressions;
+using Snap.Data.Primitive;
+using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Input;
 
 namespace DGP.Genshin.ViewModel
 {
+    /// <summary>
+    /// 主页视图模型
+    /// </summary>
     [ViewModel(InjectAs.Transient)]
-    public class HomeViewModel : ObservableObject
+    internal class HomeViewModel : ObservableObject, ISupportCancellation
     {
+        private readonly IHomeService homeService;
+
         private AnnouncementWrapper? announcement;
-        private bool isOpeningUI;
+        private string? manifesto;
 
-        public AnnouncementWrapper? Announcement
+        /// <summary>
+        /// 构造一个主页视图模型
+        /// </summary>
+        /// <param name="homeService">主页服务</param>
+        /// <param name="asyncRelayCommandFactory">异步命令工厂</param>
+        public HomeViewModel(IHomeService homeService, IAsyncRelayCommandFactory asyncRelayCommandFactory)
         {
-            get => announcement;
-            set => SetProperty(ref announcement, value);
-        }
-        public bool IsOpeningUI
-        {
-            get => isOpeningUI;
-            set => SetProperty(ref isOpeningUI, value);
-        }
-        public ICommand OpenUICommand { get; }
-        public ICommand OpenAnnouncementUICommand { get; }
+            this.homeService = homeService;
 
-        public HomeViewModel()
-        {
-            OpenUICommand = new AsyncRelayCommand(OpenUIAsync);
+            OpenUICommand = asyncRelayCommandFactory.Create(OpenUIAsync);
             OpenAnnouncementUICommand = new RelayCommand<string>(OpenAnnouncementUI);
         }
 
+        /// <inheritdoc/>
+        public CancellationToken CancellationToken { get; set; }
+
+        /// <summary>
+        /// 公告
+        /// </summary>
+        public AnnouncementWrapper? Announcement
+        {
+            get => announcement;
+
+            set => SetProperty(ref announcement, value);
+        }
+
+        /// <summary>
+        /// Snap Genshin 公告
+        /// </summary>
+        public string? Manifesto
+        {
+            get => manifesto;
+            set => SetProperty(ref manifesto, value);
+        }
+
+        /// <summary>
+        /// 打开界面监视器
+        /// </summary>
+        public WorkWatcher OpeningUI { get; } = new(false);
+
+        /// <summary>
+        /// 打开界面触发的命令
+        /// </summary>
+        public ICommand OpenUICommand { get; }
+
+        /// <summary>
+        /// 打开公告UI触发的命令
+        /// </summary>
+        public ICommand OpenAnnouncementUICommand { get; }
+
         private async Task OpenUIAsync()
         {
-            IsOpeningUI = true;
-            AnnouncementProvider provider = new();
-            AnnouncementWrapper? wrapper = await provider.GetAnnouncementWrapperAsync();
-            List<AnnouncementContent> contents = new();
-            try 
+            using (OpeningUI.Watch())
             {
-                contents = await provider.GetAnnouncementContentsAsync();
-            }
-            catch(Exception ex)
-            {
-                this.Log(ex.Message);
-            }
-            Dictionary<int, string?> contentMap = contents.ToDictionary(id => id.AnnId, iContent => iContent.Content);
-            if (wrapper is not null)
-            {
-                if (wrapper.List is List<AnnouncementListWrapper> announcementListWrappers)
+                try
                 {
-                    //将活动公告置于上方
-                    announcementListWrappers.Reverse();
-
-                    announcementListWrappers.ForEach(listWrapper =>
-                    {
-                        listWrapper.List?.ForEach(item =>
-                        {
-                            item.Content = contentMap[item.AnnId];
-                            item.OpenAnnouncementUICommand = OpenAnnouncementUICommand;
-                        });
-                    });
-
-                    if (announcementListWrappers[0].List is List<Announcement> activities)
-                    {
-                        //Match d+/d+/d+ d+:d+:d+
-                        Regex regex = new(@"(\d+\/\d+\/\d+\s\d+:\d+:\d+)", RegexOptions.IgnoreCase | RegexOptions.Multiline);
-                        activities.ForEach(item =>
-                        {
-                            Match matched = regex.Match(item.Content ?? "");
-                            if (matched.Success && DateTime.TryParse(matched.Value, out DateTime time))
-                            {
-                                if (time > item.StartTime && time < item.EndTime)
-                                {
-                                    item.StartTime = time;
-                                }
-                            }
-                        });
-
-                        wrapper.List[0].List = activities.OrderBy(i => i.StartTime).ThenBy(i => i.EndTime).ToList();
-                    }
-
-                    Announcement = wrapper;
+                    Manifesto = await homeService.GetManifestoAsync(CancellationToken);
+                    Announcement = await homeService.GetAnnouncementsAsync(OpenAnnouncementUICommand, CancellationToken);
+                }
+                catch (TaskCanceledException)
+                {
+                    this.Log("Open UI cancelled");
                 }
             }
-            IsOpeningUI = false;
         }
+
         private void OpenAnnouncementUI(string? content)
         {
             if (WebView2Helper.IsSupported)

@@ -1,7 +1,5 @@
-﻿using System;
-using System.Threading;
+﻿using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;
 
 namespace DGP.Genshin.Helper
 {
@@ -35,39 +33,37 @@ namespace DGP.Genshin.Helper
         /// <summary>
         /// 确保应用程序是否为第一个打开
         /// </summary>
-        /// <param name="app"></param>
+        /// <param name="app">应用程序</param>
+        /// <param name="multiInstancePresentAction">发现多实例时执行的回调，由先打开的进程执行</param>
         public void Ensure(Application app, Action multiInstancePresentAction)
         {
             // check if it is already open.
             try
             {
                 IsEnsureingSingleInstance = true;
-                // try to open it - if another instance is running, it will exist , if not it will throw
                 eventWaitHandle = EventWaitHandle.OpenExisting(uniqueEventName);
-                // Notify other instance so it could bring itself to foreground.
                 eventWaitHandle.Set();
-                // Terminate this instance.
                 IsExitDueToSingleInstanceRestriction = true;
+
                 app.Shutdown();
             }
             catch (WaitHandleCannotBeOpenedException)
             {
-                // listen to a new event (this app instance will be the new "master")
                 eventWaitHandle = new EventWaitHandle(false, EventResetMode.AutoReset, uniqueEventName);
             }
             finally
             {
                 IsEnsureingSingleInstance = false;
             }
-            // if this instance gets the signal to show the main window
+
             new Task(() =>
             {
+                // if this instance gets the signal
                 while (eventWaitHandle.WaitOne())
                 {
-                    app.Dispatcher.BeginInvoke(multiInstancePresentAction);
+                    App.Current.Dispatcher.Invoke(multiInstancePresentAction);
                 }
-            })
-            .Start();
+            }).Start();
         }
     }
 }

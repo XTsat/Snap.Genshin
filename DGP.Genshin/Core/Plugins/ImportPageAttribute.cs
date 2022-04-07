@@ -1,5 +1,4 @@
 ﻿using ModernWpf.Controls;
-using System;
 
 namespace DGP.Genshin.Core.Plugins
 {
@@ -13,22 +12,30 @@ namespace DGP.Genshin.Core.Plugins
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = true, Inherited = false)]
     public class ImportPageAttribute : Attribute
     {
-        public Type PageType { get; set; }
-        public string Label { get; set; }
-        public IconElement Icon { get; set; }
-
         /// <summary>
         /// 指示插件需要申请额外的可导航页面,
         /// 一个插件可以申请多个页面
         /// </summary>
         /// <param name="pageType">导航页面的类型</param>
         /// <param name="label">导航页面的标签字符串</param>
-        /// <param name="icon">图标</param>
-        public ImportPageAttribute(Type pageType, string label, IconElement icon)
+        /// <param name="iconFactoryType">图标构造工厂类的类型 必须继承自 <see cref="IconFactory"/></param>
+        public ImportPageAttribute(Type pageType, string label, Type iconFactoryType)
         {
             PageType = pageType;
             Label = label;
-            Icon = icon;
+            if (typeof(IconFactory).IsAssignableFrom(iconFactoryType))
+            {
+                if (Activator.CreateInstance(iconFactoryType) is IconFactory factory)
+                {
+                    IconElement? icon = factory.GetIcon();
+                    if (icon != null)
+                    {
+                        Icon = icon;
+                    }
+                }
+            }
+
+            Icon ??= new FontIcon() { Glyph = "\uE9CE" };
         }
 
         /// <summary>
@@ -37,12 +44,27 @@ namespace DGP.Genshin.Core.Plugins
         /// </summary>
         /// <param name="pageType">导航页面的类型</param>
         /// <param name="label">导航页面的标签字符串</param>
-        /// <param name="glyph">图标字符串 详见 <seealso cref="https://docs.microsoft.com/en-us/windows/apps/design/style/segoe-fluent-icons-font"/></param>
+        /// <param name="glyph">图标字符串 详见 https://docs.microsoft.com/en-us/windows/apps/design/style/segoe-fluent-icons-font </param>
         public ImportPageAttribute(Type pageType, string label, string glyph)
         {
             PageType = pageType;
             Label = label;
             Icon = new FontIcon { Glyph = glyph };
         }
+
+        /// <summary>
+        /// 待导航的页面类型
+        /// </summary>
+        internal Type PageType { get; set; }
+
+        /// <summary>
+        /// 导航页面的标题
+        /// </summary>
+        internal string Label { get; set; }
+
+        /// <summary>
+        /// 导航页面的图标
+        /// </summary>
+        internal IconElement Icon { get; set; }
     }
 }

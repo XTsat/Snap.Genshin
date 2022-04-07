@@ -1,132 +1,110 @@
-﻿using DGP.Genshin.DataModel.Cookie;
-using DGP.Genshin.DataModel.DailyNote;
-using DGP.Genshin.Message;
-using DGP.Genshin.MiHoYoAPI.GameRole;
-using DGP.Genshin.Service.Abstratcion;
-using Microsoft.Toolkit.Mvvm.Input;
-using Microsoft.Toolkit.Mvvm.Messaging;
+﻿using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
+using DGP.Genshin.Core.Notification;
+using DGP.Genshin.Factory.Abstraction;
+using DGP.Genshin.Service.Abstraction;
+using DGP.Genshin.Service.Abstraction.Launching;
+using Microsoft.Toolkit.Uwp.Notifications;
 using Snap.Core.DependencyInjection;
 using Snap.Core.Mvvm;
-using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.Linq;
-using System.Windows.Input;
+using System.Threading.Tasks;
 
 namespace DGP.Genshin.ViewModel
 {
+    /// <summary>
+    /// 任务栏图标视图模型
+    /// </summary>
     [ViewModel(InjectAs.Transient)]
-    internal class TaskbarIconViewModel : ObservableRecipient2, IRecipient<CookieAddedMessage>, IRecipient<CookieRemovedMessage>
+    internal class TaskbarIconViewModel : ObservableRecipient2
     {
-        private readonly ICookieService cookieService;
-        private readonly ISettingService settingService;
+        private readonly ILaunchService launchService;
+        private readonly ISignInService signInService;
 
-        private ObservableCollection<ResinWidgetConfigration>? resinWidget;
-
-        public ObservableCollection<ResinWidgetConfigration>? ResinWidgets
-        {
-            get => resinWidget;
-            set => SetProperty(ref resinWidget, value);
-        }
-
-        public ICommand ShowMainWindowCommand { get; }
-        public ICommand ExitCommand { get; }
-        public ICommand UpdateWidgetsCommand { get; }
-
-        public TaskbarIconViewModel(ICookieService cookieService, IScheduleService scheduleService, ISettingService settingService, IMessenger messenger)
+        /// <summary>
+        /// 构造一个新的任务栏图标视图模型
+        /// </summary>
+        /// <param name="signInService">签到服务</param>
+        /// <param name="asyncRelayCommandFactory">异步工厂命令</param>
+        /// <param name="messenger">消息器</param>
+        public TaskbarIconViewModel(ISignInService signInService, IAsyncRelayCommandFactory asyncRelayCommandFactory, IMessenger messenger)
             : base(messenger)
         {
-            this.cookieService = cookieService;
-            this.settingService = settingService;
-
-            scheduleService.Initialize();
-            InitializeResinWidgetsAsync();
+            launchService = App.Current.SwitchableImplementationManager.CurrentLaunchService!.Factory.Value;
+            this.signInService = signInService;
 
             ShowMainWindowCommand = new RelayCommand(OpenMainWindow);
             ExitCommand = new RelayCommand(ExitApp);
-            UpdateWidgetsCommand = new RelayCommand(UpdateWidgets);
+            RestartAsElevatedCommand = new RelayCommand(App.RestartAsElevated);
+            LaunchGameCommand = asyncRelayCommandFactory.Create(LaunchGameAsync);
+            OpenLauncherCommand = new RelayCommand(OpenLauncher);
+            SignInCommand = asyncRelayCommandFactory.Create(SignInAsync);
         }
 
-        private async void InitializeResinWidgetsAsync()
-        {
-            List<CookieUserGameRole> cookieUserGameRoles = new();
+        /// <summary>
+        /// 打开主窗体命令
+        /// </summary>
+        public ICommand ShowMainWindowCommand { get; }
 
-            cookieService.CookiesLock.EnterReadLock();
-            foreach (string cookie in cookieService.Cookies)
-            {
-                cookieUserGameRoles.AddRange(await cookieService.GetCookieUserGameRolesOf(cookie));
-            }
-            cookieService.CookiesLock.ExitReadLock();
+        /// <summary>
+        /// 退出命令
+        /// </summary>
+        public ICommand ExitCommand { get; }
 
-            //首先初始化可用的列表
-            ResinWidgets = new(cookieUserGameRoles.Select(role => new ResinWidgetConfigration { CookieUserGameRole = role }));
-            //读取储存的状态
-            List<ResinWidgetConfigration>? storedResinWidgets =
-                settingService.GetComplexOrDefault<List<ResinWidgetConfigration>>(Setting.ResinWidgetConfigrations, null);
-            //开始恢复状态
-            if (storedResinWidgets?.Count > 0)
-            {
-                foreach (ResinWidgetConfigration widget in ResinWidgets)
-                {
-                    ResinWidgetConfigration? matched = storedResinWidgets.FirstOrDefault(stored => stored.CookieUserGameRole == widget.CookieUserGameRole);
-                    if (matched != null)
-                    {
-                        widget.IsPresent = matched.IsPresent;
-                        widget.Top = matched.Top;
-                        widget.Left = matched.Left;
-                    }
-                }
-            }
-            //initialize widgets state
-            foreach (ResinWidgetConfigration widget in ResinWidgets)
-            {
-                widget.Initialize();
-            }
-        }
+        /// <summary>
+        /// 以管理员模式重启命令
+        /// </summary>
+        public ICommand RestartAsElevatedCommand { get; }
+
+        /// <summary>
+        /// 启动游戏命令
+        /// </summary>
+        public ICommand LaunchGameCommand { get; }
+
+        /// <summary>
+        /// 打开启动器命令
+        /// </summary>
+        public ICommand OpenLauncherCommand { get; }
+
+        /// <summary>
+        /// 签到命令
+        /// </summary>
+        public ICommand SignInCommand { get; }
+
         private void OpenMainWindow()
         {
-            App.ShowOrCloseWindow<MainWindow>();
+            App.BringWindowToFront<MainWindow>();
         }
+
         private void ExitApp()
         {
-            SaveResinWidgetConfigrations();
             App.Current.Shutdown();
         }
-        private void SaveResinWidgetConfigrations()
+
+        private async Task LaunchGameAsync()
         {
-            if (ResinWidgets is not null)
+            await launchService.LaunchAsync(LaunchOption.FromCurrentSettings(), ex =>
             {
-                foreach (ResinWidgetConfigration? widget in ResinWidgets)
-                {
-                    widget.UpdatePropertyState();
-                }
-                settingService[Setting.ResinWidgetConfigrations] = ResinWidgets;
-            }
-        }
-        private void UpdateWidgets()
-        {
-            App.Messenger.Send<TickScheduledMessage>();
+                new ToastContentBuilder()
+                    .AddText("启动游戏失败")
+                    .AddText(ex.Message)
+                    .SafeShow();
+            });
         }
 
-        public async void Receive(CookieAddedMessage message)
+        private void OpenLauncher()
         {
-            string cookie = message.Value;
-            List<CookieUserGameRole> results = new();
-            List<UserGameRole> userGameRoles = await new UserGameRoleProvider(cookie).GetUserGameRolesAsync();
-            results.AddRange(userGameRoles.Select(u => new CookieUserGameRole(cookie, u)));
-            foreach (CookieUserGameRole role in results)
+            launchService.OpenOfficialLauncher(ex =>
             {
-                ResinWidgets?.Add(new ResinWidgetConfigration { CookieUserGameRole = role });
-            }
+                new ToastContentBuilder()
+                    .AddText("打开启动器失败")
+                    .AddText(ex.Message)
+                    .Show();
+            });
         }
-        public void Receive(CookieRemovedMessage message)
-        {
-            IEnumerable<ResinWidgetConfigration> targets = ResinWidgets!.Where(u => u.CookieUserGameRole!.Cookie == message.Value);
 
-            foreach (ResinWidgetConfigration target in targets)
-            {
-                target.IsChecked = false;
-                ResinWidgets?.Remove(target);
-            }
+        private async Task SignInAsync()
+        {
+            await signInService.TrySignAllAccountsRolesInAsync();
         }
     }
 }

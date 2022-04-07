@@ -1,51 +1,69 @@
-﻿using DGP.Genshin.DataModel.Helper;
-using System;
-
-namespace DGP.Genshin.DataModel.Material
+﻿namespace DGP.Genshin.DataModel.Material
 {
+    /// <summary>
+    /// 天赋材料
+    /// </summary>
     public class Talent : Material
     {
-        private const string Freedom = @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_423.png";
-        private const string Prosperity = @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_443.png";
-        private const string Transience = @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_408.png";
+        /// <summary>
+        /// 诗文
+        /// </summary>
+        public const string Ballad = "https://genshin.honeyhunterworld.com/img/upgrade/guide/i_403.png";
 
-        private const string Resistance = @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_453.png";
-        private const string Diligence = @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_413.png";
-        private const string Elegance = @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_418.png";
+        /// <summary>
+        /// 浮世
+        /// </summary>
+        public const string Transience = @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_408.png";
 
-        private const string Ballad = "https://genshin.honeyhunterworld.com/img/upgrade/guide/i_403.png";
-        private const string Gold = "https://genshin.honeyhunterworld.com/img/upgrade/guide/i_433.png";
-        private const string Light = "https://genshin.honeyhunterworld.com/img/upgrade/guide/i_428.png";
+        /// <summary>
+        /// 勤劳
+        /// </summary>
+        public const string Diligence = @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_413.png";
 
-        public Talent()
+        /// <summary>
+        /// 风雅
+        /// </summary>
+        public const string Elegance = @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_418.png";
+
+        /// <summary>
+        /// 自由
+        /// </summary>
+        public const string Freedom = @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_423.png";
+
+        /// <summary>
+        /// 天光
+        /// </summary>
+        public const string Light = "https://genshin.honeyhunterworld.com/img/upgrade/guide/i_428.png";
+
+        /// <summary>
+        /// 黄金
+        /// </summary>
+        public const string Gold = "https://genshin.honeyhunterworld.com/img/upgrade/guide/i_433.png";
+
+        /// <summary>
+        /// 繁荣
+        /// </summary>
+        public const string Prosperity = @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_443.png";
+
+        /// <summary>
+        /// 抗争
+        /// </summary>
+        public const string Resistance = @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_453.png";
+
+        /// <summary>
+        /// 是否为今天的材料
+        /// </summary>
+        public bool IsAvailable { get; set; }
+
+        /// <summary>
+        /// 设置材料的可用性
+        /// </summary>
+        /// <param name="availablity">是否可用</param>
+        /// <returns>当前材料</returns>
+        public Talent SetAvailability(bool availablity)
         {
-            Star = StarHelper.FromRank(4);
-        }
-
-        public bool IsTodaysTalent(DayOfWeek? dayOfWeek)
-        {
-            return dayOfWeek switch
-            {
-                DayOfWeek.Sunday => true,
-                DayOfWeek.Monday or DayOfWeek.Thursday => Source is Freedom or Prosperity or Transience,
-                DayOfWeek.Tuesday or DayOfWeek.Friday => Source is Resistance or Diligence or Elegance,
-                DayOfWeek.Wednesday or DayOfWeek.Saturday => Source is Ballad or Gold or Light,
-                _ => false,
-            };
-        }
-        public bool IsMondstadt()
-        {
-            return City == "Mondstadt";
-        }
-
-        public bool IsLiyue()
-        {
-            return City == "Liyue";
-        }
-
-        public bool IsInazuma()
-        {
-            return City == "Inazuma";
+            IsAvailable = availablity;
+            return this;
         }
     }
 }

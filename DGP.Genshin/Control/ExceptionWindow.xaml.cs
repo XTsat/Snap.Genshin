@@ -1,65 +1,64 @@
-﻿using System;
-using System.ComponentModel;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
-using System.Windows;
+﻿using DGP.Genshin.Control.Infrastructure.Observable;
+using Snap.Win32;
 
 namespace DGP.Genshin.Control
 {
-    public partial class ExceptionWindow : Window, INotifyPropertyChanged
+    /// <summary>
+    /// 异常提示窗口
+    /// </summary>
+    public sealed partial class ExceptionWindow : ObservableWindow
     {
         private Exception exceptionObject;
 
+        /// <summary>
+        /// 构造一个新的异常窗体
+        /// </summary>
+        /// <param name="ex">要展示的异常</param>
         public ExceptionWindow(Exception ex)
         {
             ExceptionObject = ex;
-            DataContext = this;
             InitializeComponent();
         }
 
+        /// <summary>
+        /// 异常对象
+        /// </summary>
         public Exception ExceptionObject
         {
             get => exceptionObject;
+
             [MemberNotNull(nameof(exceptionObject))]
             set => Set(ref exceptionObject, value);
         }
 
-        public string ExceptionType => ExceptionObject.GetType().ToString();
-
-        #region INotifyPropertyChanged
-        public event PropertyChangedEventHandler? PropertyChanged;
-
-        protected void Set<T>([NotNullIfNotNull("value")] ref T storage, T value, [CallerMemberName] string propertyName = "")
+        /// <summary>
+        /// 异常类型字符串
+        /// </summary>
+        public string ExceptionType
         {
-            if (Equals(storage, value))
-            {
-                return;
-            }
-
-            storage = value;
-            OnPropertyChanged(propertyName);
+            get => ExceptionObject.GetType().ToString();
         }
-
-        protected void OnPropertyChanged(string propertyName)
-        {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-        }
-        #endregion
 
         private void CopyInfoAppBarButtonClick(object sender, RoutedEventArgs e)
         {
-            Clipboard.SetText(ExceptionObject.ToString());
-        }
+            string stackTrace = ExceptionObject.ToString();
 
-        private void GithubAppBarButtonClick(object sender, RoutedEventArgs e)
-        {
-            Process.Start("https://github.com/DGP-Studio/Snap.Genshin/issues/new/choose");
-        }
-
-        private void QQChatAppBarButtonClick(object sender, RoutedEventArgs e)
-        {
-            Process.Start("https://qm.qq.com/cgi-bin/qm/qr?k=K1OglMXZGd-ulewzRDdFOYnSfMBOoNiT&amp;jump_from=webapi");
+            // clear before copy
+            Clipboard.Clear();
+            try
+            {
+                Clipboard.SetText(stackTrace);
+            }
+            catch
+            {
+                try
+                {
+                    Clipboard2.SetText(stackTrace);
+                }
+                catch
+                {
+                }
+            }
         }
     }
 }

@@ -1,16 +1,22 @@
-﻿using DGP.Genshin.ViewModel;
-using System.Windows.Controls;
+﻿using DGP.Genshin.Control.Infrastructure.Concurrent;
+using DGP.Genshin.ViewModel;
+using Snap.Core.DependencyInjection;
 
 namespace DGP.Genshin.Page
 {
     /// <summary>
-    /// SponsorPage.xaml 的交互逻辑
+    /// 赞助名单页面
     /// </summary>
-    public partial class SponsorPage : System.Windows.Controls.Page
+    [View(InjectAs.Transient)]
+    internal partial class SponsorPage : AsyncPage
     {
-        public SponsorPage()
+        /// <summary>
+        /// 构造一个新的赞助名单页面
+        /// </summary>
+        /// <param name="vm">视图模型</param>
+        public SponsorPage(SponsorViewModel vm)
+            : base(vm)
         {
-            DataContext = App.GetViewModel<SponsorViewModel>();
             InitializeComponent();
         }
     }

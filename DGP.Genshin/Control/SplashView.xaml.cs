@@ -3,11 +3,17 @@ using System.Windows.Controls;
 
 namespace DGP.Genshin.Control
 {
-    public partial class SplashView : UserControl
+    /// <summary>
+    /// 初始化视图
+    /// </summary>
+    public sealed partial class SplashView : UserControl
     {
+        /// <summary>
+        /// 构造一个新的初始化视图
+        /// </summary>
         public SplashView()
         {
-            DataContext = App.GetViewModel<SplashViewModel>();
+            DataContext = App.AutoWired<SplashViewModel>();
             InitializeComponent();
         }
     }

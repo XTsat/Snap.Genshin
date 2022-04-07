@@ -1,5 +1,7 @@
-﻿using System.IO;
-using System.Windows;
+﻿using Microsoft.VisualStudio.Threading;
+using Snap.Data.Utility.Extension;
+using System.IO;
+using System.Threading.Tasks;
 using System.Windows.Media.Imaging;
 
 namespace DGP.Genshin.Control.Infrastructure.CachedImage
@@ -11,34 +13,46 @@ namespace DGP.Genshin.Control.Infrastructure.CachedImage
     /// https://github.com/floydpink/CachedImage/blob/main/source/Image.cs
     public class CachedImage : System.Windows.Controls.Image
     {
+        private static readonly DependencyProperty ImageUrlProperty = Property<CachedImage>.Depend(nameof(ImageUrl), string.Empty, ImageUrlPropertyChanged);
+        private static readonly DependencyProperty CreateOptionsProperty = Property<CachedImage>.Depend<BitmapCreateOptions>(nameof(CreateOptions));
+
         static CachedImage()
         {
-            DefaultStyleKeyProperty.OverrideMetadata(typeof(CachedImage),
-                new FrameworkPropertyMetadata(typeof(CachedImage)));
+            DefaultStyleKeyProperty.OverrideMetadata(typeof(CachedImage), new FrameworkPropertyMetadata(typeof(CachedImage)));
         }
 
+        /// <summary>
+        /// 图像Url
+        /// </summary>
         public string ImageUrl
         {
             get => (string)GetValue(ImageUrlProperty);
+
             set => SetValue(ImageUrlProperty, value);
         }
 
+        /// <summary>
+        /// 创建选项
+        /// </summary>
         public BitmapCreateOptions CreateOptions
         {
             get => (BitmapCreateOptions)GetValue(CreateOptionsProperty);
+
             set => SetValue(CreateOptionsProperty, value);
         }
 
-        private static async void ImageUrlPropertyChanged(DependencyObject obj, DependencyPropertyChangedEventArgs e)
+        private static void ImageUrlPropertyChanged(DependencyObject obj, DependencyPropertyChangedEventArgs e)
         {
-            string? url = e.NewValue as string;
+            HitImageAsync((CachedImage)obj, e.NewValue as string).Forget();
+        }
 
+        private static async Task HitImageAsync(CachedImage cachedImage, string? url)
+        {
             if (string.IsNullOrEmpty(url))
             {
                 return;
             }
 
-            CachedImage cachedImage = (CachedImage)obj;
             BitmapImage bitmapImage = new();
 
             try
@@ -50,22 +64,21 @@ namespace DGP.Genshin.Control.Infrastructure.CachedImage
                         cachedImage.Source = null;
                         return;
                     }
-                    bitmapImage.BeginInit();
-                    bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
-                    bitmapImage.CreateOptions = cachedImage.CreateOptions;
-                    bitmapImage.StreamSource = memoryStream;
-                    bitmapImage.EndInit();
+
+                    using (bitmapImage.AsDisposableInit())
+                    {
+                        bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+                        bitmapImage.CreateOptions = cachedImage.CreateOptions;
+                        bitmapImage.StreamSource = memoryStream;
+                    }
+
                     bitmapImage.Freeze();
                     cachedImage.Source = bitmapImage;
                 }
             }
-            catch { }
+            catch
+            {
+            }
         }
-
-        public static readonly DependencyProperty ImageUrlProperty =
-            DependencyProperty.Register("ImageUrl", typeof(string), typeof(CachedImage), new PropertyMetadata("", ImageUrlPropertyChanged));
-
-        public static readonly DependencyProperty CreateOptionsProperty =
-            DependencyProperty.Register("CreateOptions", typeof(BitmapCreateOptions), typeof(CachedImage));
     }
 }

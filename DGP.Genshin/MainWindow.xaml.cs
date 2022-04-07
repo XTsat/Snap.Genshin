@@ -1,246 +1,254 @@
-﻿using DGP.Genshin.Control;
-using DGP.Genshin.Control.Title;
+﻿using CommunityToolkit.Mvvm.Messaging;
+using DGP.Genshin.Core.Background;
+using DGP.Genshin.Core.DpiAware;
+using DGP.Genshin.Core.Notification;
 using DGP.Genshin.Core.Plugins;
-using DGP.Genshin.Helper.Notification;
-using DGP.Genshin.Message;
-using DGP.Genshin.MiHoYoAPI.GameRole;
-using DGP.Genshin.MiHoYoAPI.Sign;
+using DGP.Genshin.Message.Internal;
 using DGP.Genshin.Page;
-using DGP.Genshin.Service.Abstratcion;
+using DGP.Genshin.Service.Abstraction;
+using DGP.Genshin.Service.Abstraction.Setting;
+using DGP.Genshin.Service.Abstraction.Updating;
 using DGP.Genshin.ViewModel;
 using Hardcodet.Wpf.TaskbarNotification;
-using Microsoft.Toolkit.Mvvm.Messaging;
 using Microsoft.Toolkit.Uwp.Notifications;
-using System;
-using System.Collections.Generic;
+using Microsoft.VisualStudio.Threading;
+using Snap.Extenion.Enumerable;
+using Snap.Reflection;
+using Snap.Threading;
 using System.ComponentModel;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;
 
 namespace DGP.Genshin
 {
-    public partial class MainWindow : Window,
-        IRecipient<SplashInitializationCompletedMessage>,
-        IRecipient<NavigateRequestMessage>
+    /// <summary>
+    /// 主窗体
+    /// </summary>
+    internal partial class MainWindow : Window, IRecipient<SplashInitializationCompletedMessage>
     {
-        //make sure while post-initializing, main window can't be closed
-        //prevent System.NullReferenceException
-        //cause we do have some async operation in initialization so we can't use lock
-        private readonly SemaphoreSlim initializingWindow = new(1, 1);
-        private static bool hasInitializeCompleted = false;
         private static bool hasEverOpen = false;
+        private static bool hasEverClose = false;
+
+        // make sure while post-initializing, main window can't be closed
+        // prevent System.NullReferenceException
+        // cause we have some async operation in initialization so we can't use lock
+        private readonly SemaphoreSlim initializingWindow = new(1, 1);
         private readonly INavigationService navigationService;
+        private readonly BackgroundLoader backgroundLoader;
+
+        private bool hasInitializationCompleted = false;
 
         /// <summary>
-        /// do not set datacontext for mainwindow
+        /// 构造新的主窗体的实例
+        /// Do NOT set DataContext for mainwindow
         /// </summary>
         public MainWindow()
         {
-            InitializeComponent();
+            InitializeContent();
 
-            navigationService = App.GetService<INavigationService>();
+            // support per monitor dpi awareness
+            _ = new DpiAwareAdapter(this);
+
+            // randomly load a image as background
+            backgroundLoader = new(this, App.Messenger);
+            backgroundLoader.LoadNextWallpaperAsync().Forget();
+
+            // initialize NavigationService
+            navigationService = App.AutoWired<INavigationService>();
             navigationService.NavigationView = NavView;
             navigationService.Frame = ContentFrame;
 
-            App.Messenger.Register<MainWindow, SplashInitializationCompletedMessage>(this, (r, m) => r.Receive(m));
-            App.Messenger.Register<MainWindow, NavigateRequestMessage>(this, (r, m) => r.Receive(m));
+            // register messages
+            App.Messenger.RegisterAll(this);
         }
 
+        /// <summary>
+        /// 释放消息器资源
+        /// </summary>
         ~MainWindow()
         {
-            App.Messenger.Unregister<SplashInitializationCompletedMessage>(this);
-            App.Messenger.Unregister<NavigateRequestMessage>(this);
+            App.Messenger.UnregisterAll(this);
         }
 
-        public async void Receive(SplashInitializationCompletedMessage viewModelReference)
+        /// <inheritdoc/>
+        public void Receive(SplashInitializationCompletedMessage viewModelReference)
         {
-            initializingWindow.Wait();
-            ISettingService settingService = App.GetService<ISettingService>();
-            SplashViewModel splashViewModel = viewModelReference.Value;
-            PrepareTitleBarArea(splashViewModel);
-            AddAditionalNavigationViewItem();
-            //preprocess
-            if (!hasEverOpen)
-            {
-                DoUpdateFlowAsync();
-                //签到
-                if (settingService.GetOrDefault(Setting.AutoDailySignInOnLaunch, false))
-                {
-                    await SignInOnStartUp(splashViewModel);
-                }
-                //任务栏
-                if (settingService.GetOrDefault(Setting.IsTaskBarIconEnabled, true))
-                {
-                    DoTaskbarFlow();
-                }
-            }
-            splashViewModel.CurrentStateDescription = "完成";
-            splashViewModel.IsSplashNotVisible = true;
-            navigationService.Navigate<HomePage>(isSyncTabRequested: true);
-            initializingWindow.Release();
-            hasInitializeCompleted = true;
-
-            if (!hasEverOpen)
-            {
-                if (settingService.GetOrDefault(Setting.IsTaskBarIconEnabled, true))
-                {
-                    if (settingService.GetOrDefault(Setting.CloseMainWindowAfterInitializaion, false))
-                    {
-                        //before call Close() in this method,must release initializingWindow.
-                        Close();
-                    }
-                }
-            }
-
-            hasEverOpen = true;
-        }
-        public void Receive(NavigateRequestMessage message)
-        {
-            navigationService.Navigate(message.Value, message.IsSyncTabRequested);
+            PostInitializeAsync(viewModelReference).Forget();
         }
 
+        /// <inheritdoc/>
         protected override void OnClosing(CancelEventArgs e)
         {
-            initializingWindow.Wait();
-            base.OnClosing(e);
-            initializingWindow.Release();
+            TrySaveWindowState();
+            if (initializingWindow.CurrentCount < 1)
+            {
+                e.Cancel = true;
+                return;
+            }
 
-            bool isTaskbarIconEnabled = App.GetService<ISettingService>().GetOrDefault(Setting.IsTaskBarIconEnabled, false);
-            if (!hasInitializeCompleted || !isTaskbarIconEnabled)
+            using (initializingWindow.Enter())
+            {
+                base.OnClosing(e);
+            }
+
+            bool isTaskbarIconEnabled = Setting2.IsTaskBarIconEnabled.Get() && (App.Current.NotifyIcon is not null);
+
+            if (hasInitializationCompleted && isTaskbarIconEnabled)
+            {
+                if ((!hasEverClose) && Setting2.IsTaskBarIconHintDisplay.Get())
+                {
+                    new ToastContentBuilder()
+                    .AddText("Snap Genshin 已转入后台运行")
+                    .AddText("点击托盘图标以显示主窗口")
+                    .AddButton(new ToastButton()
+                        .SetContent("不再显示")
+                        .AddArgument("taskbarhint", "hide")
+                        .SetBackgroundActivation())
+                    .SafeShow(false);
+                    hasEverClose = true;
+                }
+            }
+            else
             {
                 App.Current.Shutdown();
             }
         }
 
-        private static void DoTaskbarFlow()
+        private void InitializeContent()
         {
-            App.Current.NotifyIcon ??= App.Current.FindResource("TaskbarIcon") as TaskbarIcon;
-            if (App.Current.NotifyIcon is not null)
-            {
-                App.Current.NotifyIcon.DataContext = App.GetViewModel<TaskbarIconViewModel>();
-            }
+            InitializeComponent();
+
+            // restore width and height from setting
+            Width = Setting2.MainWindowWidth.Get();
+            Height = Setting2.MainWindowHeight.Get();
+
+            // restore pane state
+            NavView.IsPaneOpen = Setting2.IsNavigationViewPaneOpen.Get();
         }
 
-        /// <summary>
-        /// 添加从插件引入的额外的导航页面
-        /// </summary>
-        private void AddAditionalNavigationViewItem()
+        private async Task PostInitializeAsync(SplashInitializationCompletedMessage viewModelReference)
         {
-            foreach (IPlugin? plugin in App.Current.PluginService.Plugins)
+            using (await initializingWindow.EnterAsync())
             {
-                foreach (ImportPageAttribute? importPage in plugin.GetType().GetCustomAttributes<ImportPageAttribute>())
+                SplashViewModel splashViewModel = viewModelReference.Value;
+                AddAdditionalNavigationViewItems();
+
+                // preprocess
+                if (!hasEverOpen)
                 {
-                    navigationService.AddToNavigation(importPage);
+                    CheckUpdateForWhatsNewAsync().Forget();
+                    TrySignInOnStartUpAsync().Forget();
+
+                    TryInitializeTaskbarIcon();
+
+                    // 树脂服务
+                    App.AutoWired<IDailyNoteService>().Initialize();
                 }
+
+                splashViewModel.CompleteInitialization();
+
+                await Task.Delay(TimeSpan.FromMilliseconds(800));
+                navigationService.Navigate<HomePage>(isSyncTabRequested: true);
             }
-        }
 
-        /// <summary>
-        /// 准备标题栏按钮
-        /// </summary>
-        /// <param name="splashView"></param>
-        private void PrepareTitleBarArea(SplashViewModel splashView)
-        {
-            splashView.CurrentStateDescription = "初始化标题栏...";
-            TitleBarStackPanel.Children.Add(new UserInfoTitleBarButton());
-            TitleBarStackPanel.Children.Add(new LaunchTitleBarButton());
-            TitleBarStackPanel.Children.Add(new SignInTitleBarButton());
-            TitleBarStackPanel.Children.Add(new JourneyLogTitleBarButton());
-            TitleBarStackPanel.Children.Add(new DailyNoteTitleBarButton());
-        }
+            hasInitializationCompleted = true;
 
-        /// <summary>
-        /// 对Cookie列表内的所有角色签到
-        /// </summary>
-        /// <param name="splashView"></param>
-        /// <returns></returns>
-        private async Task SignInOnStartUp(SplashViewModel splashView)
-        {
-            DateTime? latsSignInTime = App.GetService<ISettingService>().GetOrDefault(
-                Setting.LastAutoSignInTime, DateTime.Today.AddDays(-1), Setting.NullableDataTimeConverter);
-
-            if (latsSignInTime < DateTime.Today)
+            if (!hasEverOpen)
             {
-                splashView.CurrentStateDescription = "签到中...";
-                await SignInAllAccountsRolesAsync();
-            }
-        }
-
-        public static async Task SignInAllAccountsRolesAsync()
-        {
-            ICookieService cookieService = App.GetService<ICookieService>();
-            ISettingService settingService = App.GetService<ISettingService>();
-
-            cookieService.CookiesLock.EnterReadLock();
-            foreach (string cookie in cookieService.Cookies)
-            {
-                List<UserGameRole> roles = await new UserGameRoleProvider(cookie).GetUserGameRolesAsync();
-                foreach (UserGameRole role in roles)
+                if (Setting2.IsTaskBarIconEnabled && (App.Current.NotifyIcon is not null))
                 {
-                    SignInResult? result = await new SignInProvider(cookie).SignInAsync(role);
-
-                    settingService[Setting.LastAutoSignInTime] = DateTime.Now;
-                    bool isSignInSilently = settingService.GetOrDefault(Setting.SignInSilently, false);
-                    try
+                    if ((!App.IsLaunchedByUser) && Setting2.CloseMainWindowAfterInitializaion.Get())
                     {
-                        new ToastContentBuilder()
-                        .AddSignInHeader("米游社每日签到")
-                        .AddText(role.ToString())
-                        .AddText(result is null ? "签到失败" : "签到成功")
-                        .Show(toast => { toast.SuppressPopup = isSignInSilently; });
+                        Close();
                     }
-                    catch (DllNotFoundException) { }
                 }
             }
-            cookieService.CookiesLock.ExitReadLock();
+
+            // 设置已经打开过状态
+            hasEverOpen = true;
         }
 
-        #region Update
-        private async void DoUpdateFlowAsync()
+        private void AddAdditionalNavigationViewItems()
         {
-            await CheckUpdateAsync();
-            ISettingService settingService = App.GetService<ISettingService>();
-            IUpdateService updateService = App.GetService<IUpdateService>();
-            Version? lastLaunchAppVersion = settingService.GetOrDefault(Setting.AppVersion, updateService.CurrentVersion, Setting.VersionConverter);
-            //first launch after update
-            if (lastLaunchAppVersion < updateService.CurrentVersion)
+            // webview entries must add first
+            navigationService.AddWebViewEntries(App.AutoWired<WebViewLobbyViewModel>().Entries);
+
+            // then we add pilugin pages
+            App.Current.PluginService.Plugins.ForEach(plugin =>
+            plugin.ForEachAttribute<ImportPageAttribute>(importPage =>
+            navigationService.AddToNavigation(importPage)));
+        }
+
+        private void TrySaveWindowState()
+        {
+            if (WindowState == WindowState.Normal)
             {
-                settingService[Setting.AppVersion] = updateService.CurrentVersion;
-                new WhatsNewWindow { ReleaseNote = updateService.Release?.Body }.Show();
+                Setting2.MainWindowWidth.Set(Width);
+                Setting2.MainWindowHeight.Set(Height);
+            }
+
+            Setting2.IsNavigationViewPaneOpen.Set(NavView.IsPaneOpen);
+        }
+
+        private void TryInitializeTaskbarIcon()
+        {
+            if (Setting2.IsTaskBarIconEnabled.Get() && App.Current.NotifyIcon is null)
+            {
+                App.Current.NotifyIcon = App.Current.FindResource("TaskbarIcon") as TaskbarIcon;
+                App.Current.NotifyIcon!.DataContext = App.AutoWired<TaskbarIconViewModel>();
             }
         }
-        private async Task CheckUpdateAsync()
+
+        private async Task TrySignInOnStartUpAsync()
         {
-            UpdateState result = await App.GetService<IUpdateService>().CheckUpdateStateAsync();
-            //force-update, debug code
-            //result = UpdateState.NeedUpdate;
-            switch (result)
+            if (Setting2.AutoDailySignInOnLaunch)
+            {
+                if (DateTime.Today > Setting2.LastAutoSignInTime)
+                {
+                    await App.AutoWired<ISignInService>().TrySignAllAccountsRolesInAsync();
+                }
+            }
+        }
+
+        private async Task CheckUpdateForWhatsNewAsync()
+        {
+            await CheckUpdateForNotificationAsync();
+            Setting2.AppVersion.Set(App.AutoWired<IUpdateService>().CurrentVersion);
+        }
+
+        private async Task CheckUpdateForNotificationAsync()
+        {
+            IUpdateService updateService = App.AutoWired<IUpdateService>();
+            switch (await updateService.CheckUpdateStateAsync())
             {
                 case UpdateState.NeedUpdate:
                     {
                         new ToastContentBuilder()
                             .AddText("有新的更新可用")
-                            .AddText(App.GetService<IUpdateService>().NewVersion?.ToString())
-                            .AddButton(new ToastButton().SetContent("更新").AddArgument("action", "update").SetBackgroundActivation())
+                            .AddText(updateService.NewVersion?.ToString())
+                            .AddButton(new ToastButton()
+                                .SetContent("更新")
+                                .AddArgument("action", "update")
+                                .SetBackgroundActivation())
                             .AddButton(new ToastButtonDismiss("忽略"))
-                            .Show();
+                            .SafeShow();
                         break;
                     }
+
                 case UpdateState.NotAvailable:
                     {
                         new ToastContentBuilder()
                             .AddText("检查更新失败")
-                            .Show();
+                            .AddText("无法连接到 Github")
+                            .SafeShow();
                         break;
                     }
+
                 case UpdateState.IsNewestRelease:
                 case UpdateState.IsInsiderVersion:
                 default:
                     break;
             }
         }
-        #endregion
     }
 }

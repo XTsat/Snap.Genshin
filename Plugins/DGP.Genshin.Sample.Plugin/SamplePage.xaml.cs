@@ -1,12 +1,14 @@
-﻿using System.Windows.Controls;
+﻿using Snap.Core.DependencyInjection;
+using SystemPage = System.Windows.Controls.Page;
 
 namespace DGP.Genshin.Sample.Plugin
 {
-    public partial class SamplePage : System.Windows.Controls.Page
+    [View(InjectAs.Transient)]
+    public partial class SamplePage : SystemPage
     {
-        public SamplePage()
+        public SamplePage(SampleViewModel vm)
         {
-            DataContext = App.GetViewModel<SampleViewModel>();
+            DataContext = vm;
             InitializeComponent();
         }
     }

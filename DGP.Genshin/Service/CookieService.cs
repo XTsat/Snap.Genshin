@@ -1,29 +1,25 @@
-﻿using DGP.Genshin.Control.Cookie;
+﻿using CommunityToolkit.Mvvm.Messaging;
+using DGP.Genshin.Control.Cookie;
 using DGP.Genshin.DataModel.Cookie;
-using DGP.Genshin.Helper.Converter;
 using DGP.Genshin.Message;
 using DGP.Genshin.MiHoYoAPI.GameRole;
 using DGP.Genshin.MiHoYoAPI.UserInfo;
-using DGP.Genshin.Service.Abstratcion;
-using Microsoft.AppCenter.Crashes;
-using Microsoft.Toolkit.Mvvm.Messaging;
+using DGP.Genshin.Service.Abstraction;
+using Microsoft.VisualStudio.Threading;
 using ModernWpf.Controls;
 using Snap.Core.DependencyInjection;
 using Snap.Core.Logging;
 using Snap.Data.Json;
-using Snap.Exception;
-using System;
+using Snap.Data.Primitive;
+using Snap.Data.Utility;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace DGP.Genshin.Service
 {
-
     /// <summary>
     /// TODO 添加 current cookie 启动时校验
     /// </summary>
@@ -35,111 +31,165 @@ namespace DGP.Genshin.Service
 
         private static string? currentCookie;
 
+        private readonly IMessenger messenger;
+
         /// <summary>
-        /// Cookie池的默认实现，提供Cookie操作事件支持
+        /// prevent multiple times initializaion
         /// </summary>
-        internal class CookiePool : List<string>, ICookieService.ICookiePool
+        private readonly WorkWatcher initialization = new(false);
+
+        /// <summary>
+        /// 构造一个新的Cookie服务
+        /// </summary>
+        /// <param name="joinableTaskContext">可加入的任务上下文</param>
+        /// <param name="messenger">消息器</param>
+        public CookieService(JoinableTaskContext joinableTaskContext, IMessenger messenger)
         {
-            private readonly List<string> AccountIds = new();
-            private readonly ICookieService cookieService;
+            this.messenger = messenger;
 
-            /// <summary>
-            /// 构造新的 Cookie 池的默认实例
-            /// </summary>
-            /// <param name="cookieService"></param>
-            /// <param name="collection"></param>
-            public CookiePool(ICookieService cookieService, IEnumerable<string> collection) : base(collection)
-            {
-                this.cookieService = cookieService;
-                AccountIds.AddRange(collection.Select(item => GetCookiePairs(item)["account_id"]));
-            }
+            CookiesLock = new(joinableTaskContext);
 
-            public new void Add(string cookie)
+            LoadCookies();
+            LoadCookie();
+        }
+
+        /// <inheritdoc/>
+        public ICookieService.ICookiePool Cookies { get; set; }
+
+        /// <inheritdoc/>
+        public AsyncReaderWriterLock CookiesLock { get; init; }
+
+        /// <inheritdoc/>
+        public string CurrentCookie
+        {
+            get => Must.NotNull(currentCookie!);
+
+            private set
             {
-                if (!string.IsNullOrEmpty(cookie))
+                if (currentCookie == value)
                 {
-                    base.Add(cookie);
-                    App.Messenger.Send(new CookieAddedMessage(cookie));
-                    cookieService.SaveCookies();
-                }
-            }
-
-            public bool AddOrIgnore(string cookie)
-            {
-                if (GetCookiePairs(cookie).TryGetValue("account_id", out string? id))
-                {
-                    if (!AccountIds.Contains(id))
-                    {
-                        cookieService.CookiesLock.EnterWriteLock();
-
-                        AccountIds.Add(id);
-                        Add(cookie);
-
-                        cookieService.CookiesLock.ExitWriteLock();
-
-                        return true;
-                    }
-                }
-                return false;
-            }
-
-            public new bool Remove(string cookie)
-            {
-                cookieService.CookiesLock.EnterWriteLock();
-
-                string id = GetCookiePairs(cookie)["account_id"];
-                AccountIds.Remove(id);
-                bool result = base.Remove(cookie);
-                App.Messenger.Send(new CookieRemovedMessage(cookie));
-                cookieService.SaveCookies();
-
-                cookieService.CookiesLock.ExitWriteLock();
-
-                return result;
-            }
-
-            /// <summary>
-            /// 获取Cookie的键值对
-            /// </summary>
-            /// <param name="cookie"></param>
-            /// <returns></returns>
-            private IDictionary<string, string> GetCookiePairs(string cookie)
-            {
-                Dictionary<string, string> cookieDictionary = new();
-
-                string[] values = cookie.TrimEnd(';').Split(';');
-                foreach (string[] parts in values.Select(c => c.Split(new[] { '=' }, 2)))
-                {
-                    string cookieName = parts[0].Trim();
-                    string cookieValue;
-
-                    if (parts.Length == 1)
-                    {
-                        //Cookie attribute
-                        cookieValue = string.Empty;
-                    }
-                    else
-                    {
-                        cookieValue = parts[1];
-                    }
-
-                    cookieDictionary[cookieName] = cookieValue;
+                    return;
                 }
 
-                return cookieDictionary;
+                currentCookie = value;
+
+                try
+                {
+                    SaveCookie(value);
+                    Cookies.AddOrIgnore(currentCookie);
+                    messenger.Send(new CookieChangedMessage(currentCookie));
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    Verify.FailOperation("Snap Genshin 无法访问当前目录，请将应用程序移动到别处。");
+                }
             }
         }
 
-        public ICookieService.ICookiePool Cookies { get; set; }
-
-        public ReaderWriterLockSlim CookiesLock { get; init; }
-
-        public CookieService()
+        /// <inheritdoc/>
+        public bool IsCookieAvailable
         {
-            //支持递归调用使其可以重复进入读模式
-            CookiesLock = new(LockRecursionPolicy.SupportsRecursion);
-            LoadCookies();
-            LoadCookie();
+            get => initialization.IsCompleted && (!string.IsNullOrEmpty(currentCookie));
+        }
+
+        /// <inheritdoc/>
+        public async Task SetCookieAsync()
+        {
+            (bool isOk, string cookie) = await new CookieDialog().GetInputCookieAsync();
+            if (isOk)
+            {
+                // prevent user input unexpected invalid cookie
+                if (!string.IsNullOrEmpty(cookie) && await ValidateCookieAsync(cookie))
+                {
+                    CurrentCookie = cookie;
+                }
+
+                File.WriteAllText(PathContext.Locate(CookieFile), CurrentCookie);
+            }
+        }
+
+        /// <inheritdoc/>
+        public void ChangeOrIgnoreCurrentCookie(string? cookie)
+        {
+            if (cookie is not null)
+            {
+                CurrentCookie = cookie;
+            }
+        }
+
+        /// <inheritdoc/>
+        public async Task AddCookieToPoolOrIgnoreAsync()
+        {
+            (bool isOk, string newCookie) = await new CookieDialog().GetInputCookieAsync();
+
+            if (isOk)
+            {
+                if (await ValidateCookieAsync(newCookie))
+                {
+                    using (await CookiesLock.WriteLockAsync())
+                    {
+                        Cookies.AddOrIgnore(newCookie);
+                    }
+                }
+            }
+        }
+
+        /// <inheritdoc/>
+        public void SaveCookie(string cookie)
+        {
+            try
+            {
+                File.WriteAllText(PathContext.Locate(CookieFile), cookie);
+            }
+            catch (IOException)
+            {
+                Verify.FailOperation("cookie.dat 文件被占用，保存cookie失败");
+            }
+        }
+
+        /// <inheritdoc/>
+        public void SaveCookies()
+        {
+            IEnumerable<string> encodedCookies = Cookies.Select(c => Base64Converter.Base64Encode(Encoding.UTF8, c));
+            Json.ToFile(PathContext.Locate(CookieListFile), encodedCookies);
+        }
+
+        /// <inheritdoc/>
+        public async Task InitializeAsync()
+        {
+            if (initialization.IsWorking || initialization.IsCompleted)
+            {
+                return;
+            }
+
+            using (initialization.Watch())
+            {
+                using (await CookiesLock.WriteLockAsync())
+                {
+                    // Enumerate the shallow copied list to remove item in foreach loop
+                    // Prevent InvalidOperationException
+                    foreach (string cookie in Cookies.ToList())
+                    {
+                        if (await new UserInfoProvider(cookie).GetUserInfoAsync() is null)
+                        {
+                            // 删除用户无法手动选中的cookie(失效的cookie)
+                            Cookies.Remove(cookie);
+                        }
+                    }
+
+                    if (Cookies.Count <= 0)
+                    {
+                        currentCookie = null;
+                    }
+                }
+            }
+        }
+
+        /// <inheritdoc/>
+        public async Task<IEnumerable<CookieUserGameRole>> GetCookieUserGameRolesOfAsync(string cookie)
+        {
+            List<UserGameRole> userGameRoles = await new UserGameRoleProvider(cookie).GetUserGameRolesAsync();
+            return userGameRoles.Select(u => new CookieUserGameRole(cookie, u));
         }
 
         /// <summary>
@@ -147,15 +197,16 @@ namespace DGP.Genshin.Service
         /// </summary>
         private void LoadCookie()
         {
-            //load cookie
-            if (File.Exists(CookieFile))
+            // load cookie
+            string? cookieFile = PathContext.Locate(CookieFile);
+            if (File.Exists(cookieFile))
             {
-                CurrentCookie = File.ReadAllText(CookieFile);
+                CurrentCookie = File.ReadAllText(cookieFile);
             }
             else
             {
                 this.Log("无可用的Cookie");
-                File.Create(CookieFile).Dispose();
+                File.Create(cookieFile).Dispose();
             }
         }
 
@@ -165,119 +216,23 @@ namespace DGP.Genshin.Service
         [MemberNotNull(nameof(Cookies))]
         private void LoadCookies()
         {
-            CookiesLock.EnterWriteLock();
+            IEnumerable<string> cookies = Json
+                    .FromFileOrNew<List<string>>(CookieListFile)
+                    .Select(b => Base64Converter.Base64Decode(Encoding.UTF8, b));
+            Cookies = new CookiePool(this, messenger, cookies);
 
-            try
-            {
-                IEnumerable<string> base64Cookies = Json.FromFile<IEnumerable<string>>(CookieListFile) ?? new List<string>();
-                Cookies = new CookiePool(this, base64Cookies.Select(b => Base64Converter.Base64Decode(Encoding.UTF8, b)));
-            }
-            catch (FileNotFoundException) { }
-            catch (Exception ex)
-            {
-                Crashes.TrackError(ex);
-            }
-            Cookies ??= new CookiePool(this, new List<string>());
-
-            CookiesLock.ExitWriteLock();
-        }
-
-        public string CurrentCookie
-        {
-            get => currentCookie ?? throw new UnexceptedNullException("Cookie 不应为 null");
-            private set
-            {
-                if (currentCookie == value)
-                {
-                    return;
-                }
-                currentCookie = value;
-
-                try
-                {
-                    SaveCookie(value);
-                    Cookies.AddOrIgnore(currentCookie);
-                    App.Messenger.Send(new CookieChangedMessage(currentCookie));
-                }
-                catch (UnauthorizedAccessException)
-                {
-                    throw new SnapGenshinInternalException("Snap Genshin 无法访问所在的根目录，请将应用程序移动到别处，或尝试以管理员权限启动。");
-                }
-            }
-        }
-
-        public bool IsCookieAvailable => isInitialized && (!string.IsNullOrEmpty(currentCookie));
-
-        public async Task SetCookieAsync()
-        {
-            (ContentDialogResult result, string cookie) = await App.Current.Dispatcher.InvokeAsync(new CookieDialog().GetInputCookieAsync).Task.Unwrap();
-            if (result is ContentDialogResult.Primary)
-            {
-                //prevent user input unexpected invalid cookie
-                if (!string.IsNullOrEmpty(cookie) && await ValidateCookieAsync(cookie))
-                {
-                    CurrentCookie = cookie;
-                }
-                File.WriteAllText(CookieFile, CurrentCookie);
-            }
-        }
-
-        public void ChangeOrIgnoreCurrentCookie(string? cookie)
-        {
-            if (cookie is not null)
-            {
-                CurrentCookie = cookie;
-            }
-        }
-
-        public async Task AddCookieToPoolOrIgnoreAsync()
-        {
-            (ContentDialogResult result, string newCookie) = await App.Current.Dispatcher.InvokeAsync(new CookieDialog().GetInputCookieAsync).Task.Unwrap();
-
-            if (result is ContentDialogResult.Primary)
-            {
-                if (await ValidateCookieAsync(newCookie))
-                {
-                    if (!string.IsNullOrEmpty(newCookie))
-                    {
-                        Cookies.AddOrIgnore(newCookie);
-                    }
-                }
-            }
-        }
-
-        public void SaveCookie(string cookie)
-        {
-            try
-            {
-                File.WriteAllText(CookieFile, cookie);
-            }
-            catch (IOException)
-            {
-                throw new SnapGenshinInternalException("cooie.dat 文件被占用，保存cookie失败");
-            }
-        }
-
-        public void SaveCookies()
-        {
-            IEnumerable<string> encodedCookies = Cookies.Select(c => Base64Converter.Base64Encode(Encoding.UTF8, c));
-            Json.ToFile(CookieListFile, encodedCookies);
+            Must.NotNull(Cookies!);
         }
 
         /// <summary>
         /// 验证Cookie是否任处于登录态
         /// 若Cookie已失效则会弹出对话框提示用户
         /// </summary>
-        /// <param name="cookie"></param>
-        /// <returns></returns>
+        /// <param name="cookie">cookie</param>
+        /// <returns>是否有效</returns>
         private async Task<bool> ValidateCookieAsync(string cookie, bool showDialog = true)
         {
-            UserInfo? info = await new UserInfoProvider(cookie).GetUserInfoAsync();
-            if (info is not null)
-            {
-                return true;
-            }
-            else
+            if (await new UserInfoProvider(cookie).GetUserInfoAsync() is null)
             {
                 if (showDialog)
                 {
@@ -286,42 +241,95 @@ namespace DGP.Genshin.Service
                         Title = "该Cookie无效",
                         Content = "无法获取到你的账户信息，\n可能是Cookie已经失效，请重新登录获取",
                         PrimaryButtonText = "确认",
-                        DefaultButton = ContentDialogButton.Primary
+                        DefaultButton = ContentDialogButton.Primary,
                     }.ShowAsync();
                 }
+
                 return false;
+            }
+            else
+            {
+                return true;
             }
         }
 
-        private bool isInitialized = false;
-        public async Task InitializeAsync()
+        /// <summary>
+        /// Cookie池的默认实现，提供Cookie操作事件支持
+        /// Cookie池是非线程安全的对象，需要外围操作确保线程安全
+        /// </summary>
+        internal class CookiePool : List<string>, ICookieService.ICookiePool
         {
-            CookiesLock.EnterWriteLock();
+            private readonly List<string> acountIds = new();
+            private readonly ICookieService cookieService;
+            private readonly IMessenger messenger;
 
-            //enumerate the shallow copied list to remove item in foreach loop
-            //prevent InvalidOperationException
-            foreach (string cookie in Cookies.ToList())
+            /// <summary>
+            /// 构造新的 Cookie 池的默认实例
+            /// </summary>
+            /// <param name="cookieService">cookie服务</param>
+            /// <param name="messenger">消息器</param>
+            /// <param name="collection">字符串集合</param>
+            public CookiePool(ICookieService cookieService, IMessenger messenger, IEnumerable<string> collection)
+                : base(collection)
             {
-                UserInfo? info = await new UserInfoProvider(cookie).GetUserInfoAsync();
-                if (info is null)
+                this.cookieService = cookieService;
+                this.messenger = messenger;
+                acountIds.AddRange(collection.Select(item => GetCookiePairs(item)["account_id"]));
+            }
+
+            /// <inheritdoc/>
+            public new void Add(string cookie)
+            {
+                if (!string.IsNullOrEmpty(cookie))
                 {
-                    //删除用户无法手动选中的cookie(失效的cookie)
-                    Cookies.Remove(cookie);
+                    base.Add(cookie);
+                    messenger.Send(new CookieAddedMessage(cookie));
+                    cookieService.SaveCookies();
                 }
             }
 
-            if (Cookies.Count <= 0)
+            /// <inheritdoc/>
+            public bool AddOrIgnore(string cookie)
             {
-                currentCookie = null;
-            }
-            CookiesLock.ExitWriteLock();
-            isInitialized = true;
-        }
+                if (GetCookiePairs(cookie).TryGetValue("account_id", out string? id))
+                {
+                    if (!acountIds.Contains(id))
+                    {
+                        acountIds.Add(id);
+                        Add(cookie);
+                        return true;
+                    }
+                }
 
-        public async Task<IEnumerable<CookieUserGameRole>> GetCookieUserGameRolesOf(string cookie)
-        {
-            List<UserGameRole> userGameRoles = await new UserGameRoleProvider(cookie).GetUserGameRolesAsync();
-            return userGameRoles.Select(u => new CookieUserGameRole(cookie, u));
+                return false;
+            }
+
+            /// <inheritdoc/>
+            public new bool Remove(string cookie)
+            {
+                string id = GetCookiePairs(cookie)["account_id"];
+                acountIds.Remove(id);
+                bool result = base.Remove(cookie);
+                messenger.Send(new CookieRemovedMessage(cookie));
+                cookieService.SaveCookies();
+                return result;
+            }
+
+            private IDictionary<string, string> GetCookiePairs(string cookie)
+            {
+                Dictionary<string, string> cookieDictionary = new();
+
+                string[] values = cookie.TrimEnd(';').Split(';');
+                foreach (string[] parts in values.Select(c => c.Split(new[] { '=' }, 2)))
+                {
+                    string cookieName = parts[0].Trim();
+                    string cookieValue = parts.Length == 1 ? string.Empty : parts[1].Trim();
+
+                    cookieDictionary[cookieName] = cookieValue;
+                }
+
+                return cookieDictionary;
+            }
         }
     }
 }

@@ -1,8 +1,5 @@
 ﻿using Snap.Core.Logging;
-using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
-using System.Globalization;
 using System.IO;
 using System.Net.Http;
 using System.Security.Cryptography;
@@ -17,10 +14,10 @@ namespace DGP.Genshin.Control.Infrastructure.CachedImage
     /// </summary>
     internal static class FileCache
     {
+        private const string CacheFolderName = "Cache";
+
         // Record whether a file is being written.
         private static readonly Dictionary<string, bool> IsWritingFile = new();
-
-        public static string AppCacheDirectory { get; set; } = Path.Combine(AppContext.BaseDirectory, "Cache");
 
         // HttpClient is intended to be instantiated once per application, rather than per-use.
         private static readonly Lazy<HttpClient> LazyHttpClient = new(() => new() { Timeout = Timeout.InfiniteTimeSpan });
@@ -28,7 +25,7 @@ namespace DGP.Genshin.Control.Infrastructure.CachedImage
         /// <summary>
         /// Url命中
         /// </summary>
-        /// <param name="url"></param>
+        /// <param name="url">下载链接</param>
         /// <returns>缓存或下载的图片</returns>
         public static async Task<MemoryStream?> HitAsync(string? url)
         {
@@ -37,30 +34,31 @@ namespace DGP.Genshin.Control.Infrastructure.CachedImage
                 return null;
             }
 
-            Directory.CreateDirectory(AppCacheDirectory);
+            PathContext.CreateFolderOrIgnore(CacheFolderName);
 
             Uri uri = new(url);
             string fileName = BuildFileName(uri);
-            string localFile = $"{AppCacheDirectory}\\{fileName}";
+            string localFile = PathContext.Locate(CacheFolderName, fileName);
 
             MemoryStream memoryStream = new();
             FileStream? fileStream = null;
-            //未写文件且文件存在
-            //读取文件缓存并返回
+
+            // 未写文件且文件存在 读取文件缓存并返回
             if (!IsWritingFile.ContainsKey(fileName) && File.Exists(localFile))
             {
                 using (fileStream = new FileStream(localFile, FileMode.Open, FileAccess.Read))
                 {
                     await fileStream.CopyToAsync(memoryStream);
                 }
+
                 memoryStream.Seek(0, SeekOrigin.Begin);
                 return memoryStream;
             }
 
-            HttpClient client = LazyHttpClient.Value;
             try
             {
                 Logger.LogStatic($"Download {uri} as {fileName}");
+                HttpClient client = LazyHttpClient.Value;
                 HttpResponseMessage response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead);
 
                 if (!response.IsSuccessStatusCode)
@@ -68,54 +66,58 @@ namespace DGP.Genshin.Control.Infrastructure.CachedImage
                     return null;
                 }
 
-                Stream? responseStream = await response.Content.ReadAsStreamAsync();
-
-                if (!IsWritingFile.ContainsKey(fileName))
+                using (Stream responseStream = await response.Content.ReadAsStreamAsync())
                 {
-                    IsWritingFile[fileName] = true;
-                    fileStream = new FileStream(localFile, FileMode.Create, FileAccess.Write);
+                    if (!IsWritingFile.ContainsKey(fileName))
+                    {
+                        IsWritingFile[fileName] = true;
+                        fileStream = new FileStream(localFile, FileMode.Create, FileAccess.Write);
+                    }
+
+                    await CopyToCacheAndMemoryAsync(responseStream, memoryStream, fileStream, fileName);
                 }
 
-                await CopyToCacheAndMemoryAsync(responseStream, memoryStream, fileStream, fileName);
                 memoryStream.Seek(0, SeekOrigin.Begin);
                 Logger.LogStatic($"Download {uri} completed.");
                 return memoryStream;
             }
             catch (Exception ex)
             {
-                memoryStream?.Dispose();
-                fileStream?.Dispose();
+                await memoryStream.DisposeAsync();
+                if (fileStream is not null)
+                {
+                    await fileStream.DisposeAsync();
+                }
+
+                Logger.LogStatic(ex);
                 File.Delete(localFile);
                 Logger.LogStatic($"Caching {url} To {fileName} failed.File has deleted.");
-                Logger.LogStatic(ex);
                 return null;
             }
         }
+
         /// <summary>
-        /// 用于图片缓存资源验证
+        /// 检查图片是否已经缓存
         /// </summary>
-        /// <param name="url"></param>
-        /// <returns></returns>
+        /// <param name="url">下载链接</param>
+        /// <returns>图片是否已经缓存</returns>
         public static bool Exists(string? url)
         {
-            if (url is null)
-            {
-                return true;
-            }
+            Must.NotNull(url!);
 
-            Directory.CreateDirectory(AppCacheDirectory);
+            PathContext.CreateFolderOrIgnore(CacheFolderName);
 
             Uri uri = new(url);
             string fileName = BuildFileName(uri);
-            string localFile = $"{AppCacheDirectory}\\{fileName}";
-            return File.Exists(localFile);
+            string localFile = $"{CacheFolderName}\\{fileName}";
+            return PathContext.FileExists(localFile);
         }
 
         /// <summary>
         /// 构造缓存文件名称
         /// </summary>
-        /// <param name="uri"></param>
-        /// <returns></returns>
+        /// <param name="uri">下载链接</param>
+        /// <returns>文件名称</returns>
         private static string BuildFileName(Uri uri)
         {
             StringBuilder fileNameBuilder = new();
@@ -123,49 +125,46 @@ namespace DGP.Genshin.Control.Infrastructure.CachedImage
             {
                 string canonicalUrl = uri.ToString();
                 byte[] hash = sha1.ComputeHash(Encoding.UTF8.GetBytes(canonicalUrl));
-                fileNameBuilder.Append(BitConverter.ToString(hash).Replace("-", "").ToLower(CultureInfo.DefaultThreadCurrentCulture));
+                fileNameBuilder.Append(BitConverter.ToString(hash).Replace("-", string.Empty).ToLowerInvariant());
                 if (Path.HasExtension(canonicalUrl))
                 {
                     fileNameBuilder.Append(Path.GetExtension(canonicalUrl).Split('?')[0]);
                 }
             }
-            string fileName = fileNameBuilder.ToString();
-            return fileName;
+
+            return fileNameBuilder.ToString();
         }
 
         /// <summary>
         /// 复制到缓存与文件
         /// </summary>
-        /// <param name="response"></param>
-        /// <param name="memory"></param>
-        /// <param name="file"></param>
-        /// <param name="fileName"></param>
-        /// <returns></returns>
-        [SuppressMessage("", "CA1835")]
+        /// <param name="response">响应流</param>
+        /// <param name="memory">写入内存流</param>
+        /// <param name="file">写入文件流</param>
+        /// <param name="fileName">写入的文件名</param>
+        /// <returns>可追踪的任务</returns>
         private static async Task CopyToCacheAndMemoryAsync(Stream response, MemoryStream memory, FileStream? file, string fileName)
         {
-            using (response)
+            const int bufferSize = 128;
+            byte[] buffer = new byte[bufferSize];
+            int bytesRead;
+            do
             {
-                const int bufferSize = 128;
-                byte[] buffer = new byte[bufferSize];
-                int bytesRead;
-                do
-                {
-                    bytesRead = await response.ReadAsync(buffer, 0, bufferSize);
-                    if (file is not null)
-                    {
-                        await file.WriteAsync(buffer, 0, bytesRead);
-                    }
-                    await memory.WriteAsync(buffer, 0, bytesRead);
-                }
-                while (bytesRead > 0);
-
+                bytesRead = await response.ReadAsync(buffer.AsMemory(0, bufferSize));
                 if (file is not null)
                 {
-                    await file.FlushAsync();
-                    file.Dispose();
-                    IsWritingFile.Remove(fileName);
+                    await file.WriteAsync(buffer.AsMemory(0, bytesRead));
                 }
+
+                await memory.WriteAsync(buffer.AsMemory(0, bytesRead));
+            }
+            while (bytesRead > 0);
+
+            if (file is not null)
+            {
+                await file.FlushAsync();
+                await file.DisposeAsync();
+                IsWritingFile.Remove(fileName);
             }
         }
     }

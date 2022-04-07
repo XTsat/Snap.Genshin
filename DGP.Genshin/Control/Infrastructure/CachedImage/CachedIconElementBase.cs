@@ -1,15 +1,19 @@
 ﻿using ModernWpf.Controls;
-using System;
 using System.ComponentModel;
-using System.Diagnostics;
-using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Media;
 
 namespace DGP.Genshin.Control.Infrastructure.CachedImage
 {
+    [SuppressMessage("", "SA1101")]
+    [SuppressMessage("", "SA1116")]
+    [SuppressMessage("", "SA1124")]
+    [SuppressMessage("", "SA1201")]
+    [SuppressMessage("", "SA1202")]
+    [SuppressMessage("", "SA1309")]
+    [SuppressMessage("", "SA1413")]
+    [SuppressMessage("", "SA1600")]
     [TypeConverter(typeof(IconElementConverter))]
     public abstract class CachedIconElementBase : FrameworkElement
     {
@@ -47,10 +51,12 @@ namespace DGP.Genshin.Control.Infrastructure.CachedImage
         /// <returns>
         /// The brush that paints the foreground of the control.
         /// </returns>
-        [Bindable(true), Category("Appearance")]
+        [Bindable(true)]
+        [Category("Appearance")]
         public Brush Foreground
         {
             get => (Brush)GetValue(ForegroundProperty);
+
             set => SetValue(ForegroundProperty, value);
         }
 
@@ -68,6 +74,7 @@ namespace DGP.Genshin.Control.Infrastructure.CachedImage
         private protected Brush VisualParentForeground
         {
             get => (Brush)GetValue(VisualParentForegroundProperty);
+
             set => SetValue(VisualParentForegroundProperty, value);
         }
 
@@ -85,6 +92,7 @@ namespace DGP.Genshin.Control.Infrastructure.CachedImage
         private protected bool ShouldInheritForegroundFromVisualParent
         {
             get => _shouldInheritForegroundFromVisualParent;
+
             private set
             {
                 if (_shouldInheritForegroundFromVisualParent != value)
@@ -128,22 +136,23 @@ namespace DGP.Genshin.Control.Infrastructure.CachedImage
             get
             {
                 EnsureLayoutRoot();
-                Debug.Assert(_layoutRoot is not null);
-                return _layoutRoot.Children;
+                return _layoutRoot!.Children;
             }
         }
 
         private protected abstract void InitializeChildren();
 
-        protected override int VisualChildrenCount => 1;
+        protected override int VisualChildrenCount
+        {
+            get => 1;
+        }
 
         protected override Visual GetVisualChild(int index)
         {
             if (index == 0)
             {
                 EnsureLayoutRoot();
-                Debug.Assert(_layoutRoot is not null);
-                return _layoutRoot;
+                return _layoutRoot!;
             }
             else
             {
@@ -154,16 +163,14 @@ namespace DGP.Genshin.Control.Infrastructure.CachedImage
         protected override Size MeasureOverride(Size availableSize)
         {
             EnsureLayoutRoot();
-            Debug.Assert(_layoutRoot is not null);
-            _layoutRoot.Measure(availableSize);
+            _layoutRoot!.Measure(availableSize);
             return _layoutRoot.DesiredSize;
         }
 
         protected override Size ArrangeOverride(Size finalSize)
         {
             EnsureLayoutRoot();
-            Debug.Assert(_layoutRoot is not null);
-            _layoutRoot.Arrange(new Rect(new Point(), finalSize));
+            _layoutRoot!.Arrange(new Rect(default(Point), finalSize));
             return finalSize;
         }
 

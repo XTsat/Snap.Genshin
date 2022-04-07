@@ -1,17 +1,19 @@
-﻿using DGP.Genshin.Helper;
-using Snap.Data.Primitive;
-using System;
-using System.Windows;
+﻿using Snap.Data.Primitive;
 using System.Windows.Controls;
-using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 
 namespace DGP.Genshin.Control.Infrastructure.SmoothScrollViewer
 {
     /// <summary>
+    /// 平滑滚动视图
     /// https://github.com/HandyOrg/HandyControl/blob/master/src/Shared/HandyControl_Shared/Controls/Other/ScrollViewer.cs
     /// </summary>
+    [SuppressMessage("", "SA1201")]
+    [SuppressMessage("", "SA1202")]
+    [SuppressMessage("", "SA1309")]
+    [SuppressMessage("", "SA1413")]
+    [SuppressMessage("", "SA1600")]
     public class SmoothScrollViewer : ScrollViewer
     {
         private double _totalVerticalOffset;
@@ -22,13 +24,15 @@ namespace DGP.Genshin.Control.Infrastructure.SmoothScrollViewer
         ///     滚动方向
         /// </summary>
         public static readonly DependencyProperty OrientationProperty = DependencyProperty.Register(
-            "Orientation", typeof(Orientation), typeof(SmoothScrollViewer), new PropertyMetadata(Orientation.Vertical));
+            nameof(Orientation), typeof(Orientation), typeof(SmoothScrollViewer), new PropertyMetadata(Orientation.Vertical));
+
         /// <summary>
         ///     滚动方向
         /// </summary>
         public Orientation Orientation
         {
             get => (Orientation)GetValue(OrientationProperty);
+
             set => SetValue(OrientationProperty, value);
         }
 
@@ -36,19 +40,21 @@ namespace DGP.Genshin.Control.Infrastructure.SmoothScrollViewer
         ///     是否响应鼠标滚轮操作
         /// </summary>
         public static readonly DependencyProperty CanMouseWheelProperty = DependencyProperty.Register(
-            "CanMouseWheel", typeof(bool), typeof(SmoothScrollViewer), new PropertyMetadata(BoxedValue.TrueBox));
+            nameof(CanMouseWheel), typeof(bool), typeof(SmoothScrollViewer), new PropertyMetadata(BoxedValue.TrueBox));
+
         /// <summary>
         ///     是否响应鼠标滚轮操作
         /// </summary>
         public bool CanMouseWheel
         {
             get => (bool)GetValue(CanMouseWheelProperty);
+
             set => SetValue(CanMouseWheelProperty, BoxedValue.Boolean(value));
         }
 
         protected override void OnMouseWheel(MouseWheelEventArgs e)
         {
-            //scroll optimized
+            // scroll optimized
             if (ViewportHeight + VerticalOffset >= ExtentHeight && e.Delta <= 0)
             {
                 return;
@@ -77,8 +83,10 @@ namespace DGP.Genshin.Control.Infrastructure.SmoothScrollViewer
                     _totalHorizontalOffset = Math.Min(Math.Max(0, _totalHorizontalOffset - e.Delta), ScrollableWidth);
                     CurrentHorizontalOffset = _totalHorizontalOffset;
                 }
+
                 return;
             }
+
             e.Handled = true;
 
             if (Orientation == Orientation.Vertical)
@@ -88,6 +96,7 @@ namespace DGP.Genshin.Control.Infrastructure.SmoothScrollViewer
                     _totalVerticalOffset = VerticalOffset;
                     CurrentVerticalOffset = VerticalOffset;
                 }
+
                 _totalVerticalOffset = Math.Min(Math.Max(0, _totalVerticalOffset - e.Delta), ScrollableHeight);
                 ScrollToVerticalOffsetWithAnimation(_totalVerticalOffset);
             }
@@ -98,6 +107,7 @@ namespace DGP.Genshin.Control.Infrastructure.SmoothScrollViewer
                     _totalHorizontalOffset = HorizontalOffset;
                     CurrentHorizontalOffset = HorizontalOffset;
                 }
+
                 _totalHorizontalOffset = Math.Min(Math.Max(0, _totalHorizontalOffset - e.Delta), ScrollableWidth);
                 ScrollToHorizontalOffsetWithAnimation(_totalHorizontalOffset);
             }
@@ -110,6 +120,7 @@ namespace DGP.Genshin.Control.Infrastructure.SmoothScrollViewer
                 _totalVerticalOffset = VerticalOffset;
                 CurrentVerticalOffset = VerticalOffset;
             }
+
             ScrollToVerticalOffsetWithAnimation(0, milliseconds);
         }
 
@@ -158,7 +169,8 @@ namespace DGP.Genshin.Control.Infrastructure.SmoothScrollViewer
         ///     是否支持惯性
         /// </summary>
         public static readonly DependencyProperty IsInertiaEnabledProperty = DependencyProperty.RegisterAttached(
-            "IsInertiaEnabled", typeof(bool), typeof(SmoothScrollViewer), new PropertyMetadata(BoxedValue.TrueBox));
+            nameof(IsInertiaEnabled), typeof(bool), typeof(SmoothScrollViewer), new PropertyMetadata(BoxedValue.TrueBox));
+
         public static void SetIsInertiaEnabled(DependencyObject element, bool value)
         {
             element.SetValue(IsInertiaEnabledProperty, BoxedValue.Boolean(value));
@@ -175,6 +187,7 @@ namespace DGP.Genshin.Control.Infrastructure.SmoothScrollViewer
         public bool IsInertiaEnabled
         {
             get => (bool)GetValue(IsInertiaEnabledProperty);
+
             set => SetValue(IsInertiaEnabledProperty, BoxedValue.Boolean(value));
         }
 
@@ -182,7 +195,7 @@ namespace DGP.Genshin.Control.Infrastructure.SmoothScrollViewer
         ///     控件是否可以穿透点击
         /// </summary>
         public static readonly DependencyProperty IsPenetratingProperty = DependencyProperty.RegisterAttached(
-            "IsPenetrating", typeof(bool), typeof(SmoothScrollViewer), new PropertyMetadata(BoxedValue.FalseBox));
+            nameof(IsPenetrating), typeof(bool), typeof(SmoothScrollViewer), new PropertyMetadata(BoxedValue.FalseBox));
 
         /// <summary>
         ///     控件是否可以穿透点击
@@ -190,6 +203,7 @@ namespace DGP.Genshin.Control.Infrastructure.SmoothScrollViewer
         public bool IsPenetrating
         {
             get => (bool)GetValue(IsPenetratingProperty);
+
             set => SetValue(IsPenetratingProperty, BoxedValue.Boolean(value));
         }
 
@@ -207,7 +221,7 @@ namespace DGP.Genshin.Control.Infrastructure.SmoothScrollViewer
         ///     当前垂直滚动偏移
         /// </summary>
         internal static readonly DependencyProperty CurrentVerticalOffsetProperty = DependencyProperty.Register(
-            "CurrentVerticalOffset", typeof(double), typeof(SmoothScrollViewer), new PropertyMetadata(BoxedValue.Double0Box, OnCurrentVerticalOffsetChanged));
+            nameof(CurrentVerticalOffset), typeof(double), typeof(SmoothScrollViewer), new PropertyMetadata(BoxedValue.Double0Box, OnCurrentVerticalOffsetChanged));
 
         private static void OnCurrentVerticalOffsetChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
@@ -224,6 +238,7 @@ namespace DGP.Genshin.Control.Infrastructure.SmoothScrollViewer
         {
             // ReSharper disable once UnusedMember.Local
             get => (double)GetValue(CurrentVerticalOffsetProperty);
+
             set => SetValue(CurrentVerticalOffsetProperty, value);
         }
 
@@ -231,7 +246,7 @@ namespace DGP.Genshin.Control.Infrastructure.SmoothScrollViewer
         ///     当前水平滚动偏移
         /// </summary>
         internal static readonly DependencyProperty CurrentHorizontalOffsetProperty = DependencyProperty.Register(
-            "CurrentHorizontalOffset", typeof(double), typeof(SmoothScrollViewer), new PropertyMetadata(BoxedValue.Double0Box, OnCurrentHorizontalOffsetChanged));
+            nameof(CurrentHorizontalOffset), typeof(double), typeof(SmoothScrollViewer), new PropertyMetadata(BoxedValue.Double0Box, OnCurrentHorizontalOffsetChanged));
 
         private static void OnCurrentHorizontalOffsetChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
@@ -247,6 +262,7 @@ namespace DGP.Genshin.Control.Infrastructure.SmoothScrollViewer
         internal double CurrentHorizontalOffset
         {
             get => (double)GetValue(CurrentHorizontalOffsetProperty);
+
             set => SetValue(CurrentHorizontalOffsetProperty, value);
         }
     }

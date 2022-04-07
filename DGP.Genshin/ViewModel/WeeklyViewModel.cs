@@ -1,282 +1,152 @@
-﻿using DGP.Genshin.DataModel;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
+using DGP.Genshin.Control.Infrastructure.Concurrent;
+using DGP.Genshin.DataModel.Character;
+using DGP.Genshin.DataModel.Material;
+using DGP.Genshin.Factory.Abstraction;
 using Snap.Core.DependencyInjection;
+using Snap.Core.Logging;
+using Snap.Data.Primitive;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using WeeklyDefinition = DGP.Genshin.DataModel.Material.Weeklies;
 
 namespace DGP.Genshin.ViewModel
 {
+    /// <summary>
+    /// 周本视图模型
+    /// </summary>
     [ViewModel(InjectAs.Transient)]
-    public class WeeklyViewModel
+    internal class WeeklyViewModel : ObservableObject, ISupportCancellation
     {
-        private readonly MetadataViewModel dataService;
+        private readonly MetadataViewModel metadata;
+        private IList<Weekly>? weeklies;
 
-        #region 风魔龙
-        private IEnumerable<Character>? dvalinsPlume;
-        public IEnumerable<Character>? DvalinsPlume
+        /// <summary>
+        /// 构造一个心的周本视图模型
+        /// </summary>
+        /// <param name="metadata">元数据模型</param>
+        /// <param name="asyncRelayCommandFactory">异步命令工厂</param>
+        public WeeklyViewModel(MetadataViewModel metadata, IAsyncRelayCommandFactory asyncRelayCommandFactory)
         {
-            get
+            this.metadata = metadata;
+
+            OpenUICommand = asyncRelayCommandFactory.Create(OpenUIAsync);
+        }
+
+        /// <inheritdoc/>
+        public CancellationToken CancellationToken { get; set; }
+
+        /// <summary>
+        /// 周本列表
+        /// </summary>
+        public IList<Weekly>? Weeklies { get => weeklies; set => SetProperty(ref weeklies, value); }
+
+        /// <summary>
+        /// 打开界面触发的命令
+        /// </summary>
+        public ICommand OpenUICommand { get; }
+
+        private async Task OpenUIAsync()
+        {
+            try
             {
-                if (dvalinsPlume == null)
-                {
-                    dvalinsPlume = dataService.Characters?
-                        .Where(c => c.Weekly?.Source == @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_461.png").ToList();
-                }
-                return dvalinsPlume;
+                await Task.Delay(500, CancellationToken);
+                BuildWeeklies();
+            }
+            catch (TaskCanceledException)
+            {
+                this.Log("Open UI cancelled");
             }
         }
 
-        private IEnumerable<Character>? dvalinsClaw;
-        public IEnumerable<Character>? DvalinsClaw
+        private void BuildWeeklies()
         {
-            get
+            Weeklies = new List<Weekly>()
             {
-                if (dvalinsClaw == null)
-                {
-                    dvalinsClaw = dataService.Characters?
-                        .Where(c => c.Weekly?.Source == @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_462.png").ToList();
-                }
-                return dvalinsClaw;
-            }
+                new Weekly(
+                    "裂空的魔龙",
+                    IndexedFromWeeklyName(WeeklyDefinition.DvalinsPlume),
+                    IndexedFromWeeklyName(WeeklyDefinition.DvalinsClaw),
+                    IndexedFromWeeklyName(WeeklyDefinition.DvalinsSigh)),
+                new Weekly(
+                    "北风的王狼",
+                    IndexedFromWeeklyName(WeeklyDefinition.TailofBoreas),
+                    IndexedFromWeeklyName(WeeklyDefinition.RingofBoreas),
+                    IndexedFromWeeklyName(WeeklyDefinition.SpiritLocketofBoreas)),
+
+                new Weekly(
+                    "「公子」",
+                    IndexedFromWeeklyName(WeeklyDefinition.TuskofMonocerosCaeli),
+                    IndexedFromWeeklyName(WeeklyDefinition.ShardofaFoulLegacy),
+                    IndexedFromWeeklyName(WeeklyDefinition.ShadowoftheWarrior)),
+                new Weekly(
+                    "若陀龙王",
+                    IndexedFromWeeklyName(WeeklyDefinition.DragonLordsCrown),
+                    IndexedFromWeeklyName(WeeklyDefinition.BloodjadeBranch),
+                    IndexedFromWeeklyName(WeeklyDefinition.GildedScale)),
+
+                new Weekly(
+                    "「女士」",
+                    IndexedFromWeeklyName(WeeklyDefinition.MoltenMoment),
+                    IndexedFromWeeklyName(WeeklyDefinition.HellfireButterfly),
+                    IndexedFromWeeklyName(WeeklyDefinition.AshenHeart)),
+                new Weekly(
+                    "祸津御建鸣神命",
+                    IndexedFromWeeklyName(WeeklyDefinition.MudraoftheMaleficGeneral),
+                    IndexedFromWeeklyName(WeeklyDefinition.TearsoftheCalamitousGod),
+                    IndexedFromWeeklyName(WeeklyDefinition.TheMeaningofAeons)),
+            };
         }
 
-        private IEnumerable<Character>? dvalinsSigh;
-        public IEnumerable<Character>? DvalinsSigh
+        private Indexed<Material?, Character> IndexedFromWeeklyName(string weeklyName)
         {
-            get
-            {
-                if (dvalinsSigh == null)
-                {
-                    dvalinsSigh = dataService.Characters?
-                        .Where(c => c.Weekly?.Source == @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_463.png").ToList();
-                }
-                return dvalinsSigh;
-            }
-        }
-        #endregion
-
-        #region 北风的王狼
-        private IEnumerable<Character>? tailofBoreas;
-        public IEnumerable<Character>? TailofBoreas
-        {
-            get
-            {
-                if (tailofBoreas == null)
-                {
-                    tailofBoreas = dataService.Characters?
-                        .Where(c => c.Weekly?.Source == @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_464.png").ToList();
-                }
-                return tailofBoreas;
-            }
+            List<Character> list = metadata.Characters
+                .Where(c => c.Weekly!.Source == weeklyName)
+                .ToList();
+            return new(list.FirstOrDefault()?.Weekly, list);
         }
 
-        private IEnumerable<Character>? ringofBoreas;
-        public IEnumerable<Character>? RingofBoreas
+        /// <summary>
+        /// 表示一个周本材料展示
+        /// </summary>
+        internal record Weekly
         {
-            get
+            /// <summary>
+            /// 构造一个新的周本材料展示
+            /// </summary>
+            /// <param name="name">名称</param>
+            /// <param name="first">材料1列表</param>
+            /// <param name="second">材料2列表</param>
+            /// <param name="third">材料3列表</param>
+            public Weekly(string name, Indexed<Material?, Character> first, Indexed<Material?, Character> second, Indexed<Material?, Character> third)
             {
-                if (ringofBoreas == null)
-                {
-                    ringofBoreas = dataService.Characters?
-                        .Where(c => c.Weekly?.Source == @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_465.png").ToList();
-                }
-                return ringofBoreas;
+                Name = name;
+                First = first;
+                Second = second;
+                Third = third;
             }
-        }
 
-        private IEnumerable<Character>? spiritLocketofBoreas;
-        public IEnumerable<Character>? SpiritLocketofBoreas
-        {
-            get
-            {
-                if (spiritLocketofBoreas == null)
-                {
-                    spiritLocketofBoreas = dataService.Characters?
-                        .Where(c => c.Weekly?.Source == @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_466.png").ToList();
-                }
-                return spiritLocketofBoreas;
-            }
-        }
-        #endregion
+            /// <summary>
+            /// 名称
+            /// </summary>
+            public string Name { get; set; }
 
-        #region 公子
-        private IEnumerable<Character>? tuskofMonocerosCaeli;
-        public IEnumerable<Character>? TuskofMonocerosCaeli
-        {
-            get
-            {
-                if (tuskofMonocerosCaeli == null)
-                {
-                    tuskofMonocerosCaeli = dataService.Characters?
-                        .Where(c => c.Weekly?.Source == @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_467.png").ToList();
-                }
-                return tuskofMonocerosCaeli;
-            }
-        }
+            /// <summary>
+            /// 材料1
+            /// </summary>
+            public Indexed<Material?, Character> First { get; set; }
 
-        private IEnumerable<Character>? shardofaFoulLegacy;
-        public IEnumerable<Character>? ShardofaFoulLegacy
-        {
-            get
-            {
-                if (shardofaFoulLegacy == null)
-                {
-                    shardofaFoulLegacy = dataService.Characters?
-                        .Where(c => c.Weekly?.Source == @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_468.png").ToList();
-                }
-                return shardofaFoulLegacy;
-            }
-        }
+            /// <summary>
+            /// 材料2
+            /// </summary>
+            public Indexed<Material?, Character> Second { get; set; }
 
-        private IEnumerable<Character>? shadowoftheWarrior;
-        public IEnumerable<Character>? ShadowoftheWarrior
-        {
-            get
-            {
-                if (shadowoftheWarrior == null)
-                {
-                    shadowoftheWarrior = dataService.Characters?
-                        .Where(c => c.Weekly?.Source == @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_469.png").ToList();
-                }
-                return shadowoftheWarrior;
-            }
-        }
-        #endregion
-
-        #region 若陀龙王
-        private IEnumerable<Character>? dragonLordsCrown;
-        public IEnumerable<Character>? DragonLordsCrown
-        {
-            get
-            {
-                if (dragonLordsCrown == null)
-                {
-                    dragonLordsCrown = dataService.Characters?
-                        .Where(c => c.Weekly?.Source == @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_470.png").ToList();
-                }
-                return dragonLordsCrown;
-            }
-        }
-
-        private IEnumerable<Character>? bloodjadeBranch;
-        public IEnumerable<Character>? BloodjadeBranch
-        {
-            get
-            {
-                if (bloodjadeBranch == null)
-                {
-                    bloodjadeBranch = dataService.Characters?
-                        .Where(c => c.Weekly?.Source == @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_471.png").ToList();
-                }
-                return bloodjadeBranch;
-            }
-        }
-
-        private IEnumerable<Character>? gildedScale;
-        public IEnumerable<Character>? GildedScale
-        {
-            get
-            {
-                if (gildedScale == null)
-                {
-                    gildedScale = dataService.Characters?
-                        .Where(c => c.Weekly?.Source == @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_472.png").ToList();
-                }
-                return gildedScale;
-            }
-        }
-        #endregion
-
-        #region 女士
-        private IEnumerable<Character>? moltenMoment;
-        public IEnumerable<Character>? MoltenMoment
-        {
-            get
-            {
-                if (moltenMoment == null)
-                {
-                    moltenMoment = dataService.Characters?
-                        .Where(c => c.Weekly?.Source == @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_480.png").ToList();
-                }
-                return moltenMoment;
-            }
-        }
-
-        private IEnumerable<Character>? hellfireButterfly;
-        public IEnumerable<Character>? HellfireButterfly
-        {
-            get
-            {
-                if (hellfireButterfly == null)
-                {
-                    hellfireButterfly = dataService.Characters?
-                        .Where(c => c.Weekly?.Source == @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_481.png").ToList();
-                }
-                return hellfireButterfly;
-            }
-        }
-
-        private IEnumerable<Character>? ashenHeart;
-        public IEnumerable<Character>? AshenHeart
-        {
-            get
-            {
-                if (ashenHeart == null)
-                {
-                    ashenHeart = dataService.Characters?
-                        .Where(c => c.Weekly?.Source == @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_482.png").ToList();
-                }
-                return ashenHeart;
-            }
-        }
-        #endregion
-
-        #region 雷电将军
-        private IEnumerable<Character>? unknow1;
-        public IEnumerable<Character>? Unknown1
-        {
-            get
-            {
-                if (unknow1 == null)
-                {
-                    unknow1 = dataService.Characters?
-                        .Where(c => c.Weekly?.Source == @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_483.png").ToList();
-                }
-                return unknow1;
-            }
-        }
-
-        private IEnumerable<Character>? unknow2;
-        public IEnumerable<Character>? Unkonw2
-        {
-            get
-            {
-                if (unknow2 == null)
-                {
-                    unknow2 = dataService.Characters?
-                        .Where(c => c.Weekly?.Source == @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_484.png").ToList();
-                }
-                return unknow2;
-            }
-        }
-
-        private IEnumerable<Character>? unknown3;
-        public IEnumerable<Character>? Unknow3
-        {
-            get
-            {
-                if (unknown3 == null)
-                {
-                    unknown3 = dataService.Characters?
-                        .Where(c => c.Weekly?.Source == @"https://genshin.honeyhunterworld.com/img/upgrade/guide/i_485.png").ToList();
-                }
-                return unknown3;
-            }
-        }
-        #endregion
-
-        public WeeklyViewModel(MetadataViewModel dataService)
-        {
-            this.dataService = dataService;
+            /// <summary>
+            /// 材料3
+            /// </summary>
+            public Indexed<Material?, Character> Third { get; set; }
         }
     }
 }

@@ -1,26 +1,29 @@
-﻿using DGP.Genshin.Control;
+﻿using CommunityToolkit.Mvvm.Messaging;
+using DGP.Genshin.Control;
 using DGP.Genshin.Core;
+using DGP.Genshin.Core.ImplementationSwitching;
+using DGP.Genshin.Core.LifeCycle;
+using DGP.Genshin.Core.Notification;
 using DGP.Genshin.Core.Plugins;
-using DGP.Genshin.Helper;
-using DGP.Genshin.Helper.Notification;
+using DGP.Genshin.Message;
 using DGP.Genshin.MiHoYoAPI.Request;
-using DGP.Genshin.Service.Abstratcion;
+using DGP.Genshin.Service.Abstraction.Setting;
 using Hardcodet.Wpf.TaskbarNotification;
-using Microsoft.AppCenter;
-using Microsoft.AppCenter.Analytics;
 using Microsoft.AppCenter.Crashes;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Toolkit.Mvvm.Messaging;
 using Microsoft.Toolkit.Uwp.Notifications;
 using ModernWpf;
 using Snap.Core.Logging;
-using Snap.Exception;
-using System;
+using Snap.Extenion.Enumerable;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Security.Principal;
-using System.Windows;
+using System.Threading.Tasks;
+using WPFUI.Appearance;
 
 namespace DGP.Genshin
 {
@@ -29,91 +32,137 @@ namespace DGP.Genshin
     /// </summary>
     public partial class App : Application
     {
+        private static bool? isElevated;
+
         private readonly ToastNotificationHandler toastNotificationHandler = new();
         private readonly SingleInstanceChecker singleInstanceChecker = new("Snap.Genshin");
         private readonly ServiceManagerBase serviceManager;
         private readonly IPluginService pluginService;
+        private readonly SwitchableImplementationManager switchableImplementationManager;
 
-        internal ServiceManagerBase ServiceManager => serviceManager;
-        internal IPluginService PluginService => pluginService;
-        public TaskbarIcon? NotifyIcon { get; set; }
+        private Version? version;
 
+        /// <summary>
+        /// 构造一个新的 Snap Genshin 实例
+        /// </summary>
         public App()
         {
+            // prevent later call change executing assembly
+            _ = Version;
             pluginService = new PluginService();
+            switchableImplementationManager = new();
             serviceManager = new SnapGenshinServiceManager();
+            switchableImplementationManager.SwitchToCorrectImplementations();
         }
 
         /// <summary>
         /// 覆盖默认类型的 Current
         /// </summary>
-        public static new App Current => (App)Application.Current;
+        public static new App Current
+        {
+            get => (App)Application.Current;
+        }
 
+        /// <summary>
+        /// 检查当前应用程序是否提权
+        /// </summary>
         public static bool IsElevated
         {
             get
             {
-                using (WindowsIdentity identity = WindowsIdentity.GetCurrent())
-                {
-                    WindowsPrincipal principal = new(identity);
-                    return principal.IsInRole(WindowsBuiltInRole.Administrator);
-                }
+                isElevated ??= GetElevated();
+                return isElevated.Value;
             }
         }
 
-        #region Dependency Injection Helper
+        /// <summary>
+        /// 检查应用程序是否由用户手动启动
+        /// </summary>
+        public static bool IsLaunchedByUser { get; set; } = true;
+
         /// <summary>
         /// 全局消息交换器
         /// </summary>
-        public static WeakReferenceMessenger Messenger => WeakReferenceMessenger.Default;
-
-        /// <summary>
-        /// 获取应注入的服务
-        /// 获取时应使用服务的接口类型
-        /// </summary>
-        /// <typeparam name="TService"></typeparam>
-        /// <returns></returns>
-        /// <exception cref="SnapGenshinInternalException">对应的服务类型未注册</exception>
-        public static TService GetService<TService>()
+        public static WeakReferenceMessenger Messenger
         {
-            return Current.serviceManager.Services!.GetService<TService>()
-                ?? throw new SnapGenshinInternalException($"无法找到 {typeof(TService)} 类型的服务");
+            get => WeakReferenceMessenger.Default;
         }
 
         /// <summary>
-        /// 获取应注入的视图模型
+        /// 当前的版本号
         /// </summary>
-        /// <typeparam name="TViewModel"></typeparam>
-        /// <returns></returns>
-        public static TViewModel GetViewModel<TViewModel>()
+        public Version Version
         {
-            return GetService<TViewModel>();
-        }
-
-        /// <summary>
-        /// 查找 <see cref="Application.Current.Windows"/> 集合中的对应 <typeparamref name="TWindow"/> 类型的 Window
-        /// </summary>
-        /// <returns>返回唯一的窗口，未找到返回新实例</returns>
-        public static void ShowOrCloseWindow<TWindow>(string? name = null) where TWindow : Window, new()
-        {
-            TWindow? window = Current.Windows.OfType<TWindow>().FirstOrDefault();
-
-            if (window is not null)
+            get
             {
-                window.Close();
-            }
-            else
-            {
-                TWindow newWindow = new();
-                newWindow.Show();
+                version ??= Assembly.GetExecutingAssembly().GetName().Version!;
+                return version;
             }
         }
 
         /// <summary>
-        /// 查找 <see cref="Application.Current.Windows"/> 集合中的对应 <typeparamref name="TWindow"/> 类型的 Window
+        /// 任务栏图标
         /// </summary>
-        /// <returns>返回唯一的窗口，未找到返回新实例</returns>
-        public static void BringWindowToFront<TWindow>() where TWindow : Window, new()
+        public TaskbarIcon? NotifyIcon { get; set; }
+
+        /// <summary>
+        /// 服务管理器
+        /// </summary>
+        internal ServiceManagerBase ServiceManager
+        {
+            get => serviceManager;
+        }
+
+        /// <summary>
+        /// 插件服务
+        /// </summary>
+        internal IPluginService PluginService
+        {
+            get => pluginService;
+        }
+
+        /// <summary>
+        /// 可切换服务实现
+        /// </summary>
+        internal SwitchableImplementationManager SwitchableImplementationManager
+        {
+            get => switchableImplementationManager;
+        }
+
+        /// <summary>
+        /// 用于插件发现注入服务的容器实例
+        /// </summary>
+        internal Core.IContainer DI { get; } = new DefaultContainter();
+
+        /// <summary>
+        /// 以管理员权限重启
+        /// </summary>
+        public static void RestartAsElevated()
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo()
+                {
+                    Verb = "runas",
+                    UseShellExecute = true,
+                    FileName = PathContext.Locate("DGP.Genshin.exe"),
+                });
+            }
+            catch (Win32Exception)
+            {
+                return;
+            }
+
+            Current.Shutdown();
+        }
+
+        /// <summary>
+        /// 查找 <see cref="App.Current.Windows"/> 集合中的对应 <typeparamref name="TWindow"/> 类型的 Window
+        /// 将其唤至前台
+        /// </summary>
+        /// <typeparam name="TWindow">窗体类型</typeparam>
+        public static void BringWindowToFront<TWindow>()
+            where TWindow : Window, new()
         {
             TWindow? window = Current.Windows.OfType<TWindow>().FirstOrDefault();
 
@@ -121,106 +170,194 @@ namespace DGP.Genshin
             {
                 window = new();
             }
+
             if (window.WindowState == WindowState.Minimized || window.Visibility != Visibility.Visible)
             {
                 window.Show();
                 window.WindowState = WindowState.Normal;
             }
+
             window.Activate();
             window.Topmost = true;
             window.Topmost = false;
             window.Focus();
         }
-        #endregion
 
-        #region LifeCycle
+        /// <summary>
+        /// 获取注入的类型
+        /// </summary>
+        /// <param name="type">服务的类型</param>
+        /// <returns>服务</returns>
+        internal static object AutoWired(Type type)
+        {
+            object? service = Current.serviceManager.Services!.GetService(type);
+            return Must.NotNull(service!);
+        }
+
+        /// <summary>
+        /// 获取注入的类型
+        /// </summary>
+        /// <typeparam name="T">服务的类型</typeparam>
+        /// <returns>服务</returns>
+        internal static T AutoWired<T>()
+            where T : class
+        {
+            T? service = Current.serviceManager.Services!.GetService<T>();
+            return Must.NotNull(service!);
+        }
+
+        /// <inheritdoc/>
         protected override void OnStartup(StartupEventArgs e)
         {
             ConfigureWorkingDirectory();
             ConfigureUnhandledException();
-            //handle notification activation
+
+            // handle notification activation
             ConfigureToastNotification();
             singleInstanceChecker.Ensure(Current, () => BringWindowToFront<MainWindow>());
-            GetService<ISettingService>().Initialize();
-            //app theme
-            UpdateAppTheme();
-            //app center services
+
+            // app center services
             ConfigureAppCenter(true);
-            //global requester callback
+
+            // global requester callback
             ConfigureRequester();
-            //open main window
+
+            // services
+            AutoWired<ISettingService>().Initialize();
+
+            // app theme
+            UpdateAppTheme();
+            TriggerAppStartUpEvent();
+
+            // open main window
             base.OnStartup(e);
+            BringWindowToFront<MainWindow>();
         }
+
+        /// <inheritdoc/>
         protected override void OnExit(ExitEventArgs e)
         {
             if (!singleInstanceChecker.IsExitDueToSingleInstanceRestriction)
             {
-                GetService<ISettingService>().UnInitialize();
+                Messenger.Send(new AppExitingMessage());
+                switchableImplementationManager.UnInitialize();
+
+                // make sure settings are saved last
+                AutoWired<ISettingService>().UnInitialize();
                 try
                 {
                     ToastNotificationManagerCompat.History.Clear();
                 }
-                catch { }
+                catch
+                {
+                }
+
                 this.Log($"Exit code : {e.ApplicationExitCode}");
             }
+
             base.OnExit(e);
         }
+
+        /// <inheritdoc/>
         protected override void OnSessionEnding(SessionEndingCancelEventArgs e)
         {
-            Shutdown();
+            e.Cancel = true;
+            base.OnSessionEnding(e);
+            if (!singleInstanceChecker.IsExitDueToSingleInstanceRestriction)
+            {
+                Messenger.Send(new AppExitingMessage());
+                switchableImplementationManager.UnInitialize();
+                AutoWired<ISettingService>().UnInitialize();
+                try
+                {
+                    ToastNotificationManagerCompat.History.Clear();
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        private static bool GetElevated()
+        {
+            using (WindowsIdentity identity = WindowsIdentity.GetCurrent())
+            {
+                WindowsPrincipal principal = new(identity);
+                return principal.IsInRole(WindowsBuiltInRole.Administrator);
+            }
+        }
+
+        private void TriggerAppStartUpEvent()
+        {
+            pluginService.Plugins
+                .OfType<IAppStartUp>()
+                .ForEach(notified => notified.Happen(DI));
         }
 
         private void ConfigureUnhandledException()
         {
             AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
         }
+
         private void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
         {
             if (!singleInstanceChecker.IsEnsureingSingleInstance)
             {
-                //unhandled exception now can be uploaded automatically
+                // unhandled exception now can be uploaded automatically
                 new ExceptionWindow((Exception)e.ExceptionObject).ShowDialog();
             }
         }
+
         private void ConfigureRequester()
         {
             Requester.ResponseFailedAction = (ex, method, desc) =>
-            Crashes.TrackError(ex, new Dictionary<string, string> { { method, desc } });
+            {
+                if (ex is not TaskCanceledException)
+                {
+                    Crashes.TrackError(ex, new Dictionary<string, string> { { method, desc } });
+                }
+            };
         }
+
         private void ConfigureWorkingDirectory()
         {
             if (Path.GetDirectoryName(AppContext.BaseDirectory) is string workingPath)
             {
+                IsLaunchedByUser = (Environment.CurrentDirectory == workingPath);
                 Environment.CurrentDirectory = workingPath;
             }
         }
-        private void ConfigureAppCenter(bool enabled)
-        {
-            if (enabled)
-            {
-                AppCenter.SetUserId(User.Id);
-                //AppCenter.LogLevel = LogLevel.Verbose;
 
-                //cause the version of debug is always higher than normal release
-                //we need to send debug info to separate kanban
-#if DEBUG
-                //DEBUG INFO should send to Snap Genshin Debug kanban
-                AppCenter.Start("2e4fa440-132e-42a7-a288-22ab1a8606ef", typeof(Analytics), typeof(Crashes));
-#else
-                //RELEASE INFO should send to Snap Genshin kanban
-                AppCenter.Start("031f6319-175f-475a-a2a6-6e13eaf9bb08", typeof(Analytics), typeof(Crashes));
-#endif
-            }
-        }
+        partial void ConfigureAppCenter(bool enabled);
+
         private void ConfigureToastNotification()
         {
             ToastNotificationManagerCompat.OnActivated += toastNotificationHandler.OnActivatedByNotification;
         }
+
         private void UpdateAppTheme()
         {
-            ThemeManager.Current.ApplicationTheme =
-                GetService<ISettingService>().GetOrDefault(Setting.AppTheme, null, Setting.ApplicationThemeConverter);
+            ThemeManager.Current.ApplicationTheme = Setting2.AppTheme.Get();
+
+            // set app accent color to correct color.
+            Accent.Change(ThemeManager.Current.ActualAccentColor, ThemeType.Unknown);
         }
-        #endregion
+
+        /// <summary>
+        /// 默认容器实现
+        /// </summary>
+        internal class DefaultContainter : Core.IContainer
+        {
+            /// <summary>
+            /// 在容器中查找注入的服务
+            /// </summary>
+            /// <typeparam name="T">注入的服务的类型</typeparam>
+            /// <returns>注入的服务</returns>
+            public T Find<T>()
+                where T : class
+            {
+                return AutoWired<T>();
+            }
+        }
     }
 }

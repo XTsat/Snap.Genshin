@@ -167,7 +167,7 @@
         </ControlTemplate.Triggers>
     </ControlTemplate>
 
-    <Style TargetType="{x:Type wu:CardExpander}">
+    <Style TargetType="{x:Type wu:CardExpander}" x:Key="DefaultCardExpanderStyle">
         <Setter Property="Foreground">
             <Setter.Value>
                 <SolidColorBrush Color="{DynamicResource TextFillColorPrimary}" />
@@ -341,6 +341,7 @@
             </Setter.Value>
         </Setter>
     </Style>
+    <Style TargetType="{x:Type wu:CardExpander}" BasedOn="{StaticResource DefaultCardExpanderStyle}"/>
 
     <Style TargetType="{x:Type wu:CardAction}">
         <Setter Property="Foreground">
@@ -442,6 +443,117 @@
                                     </Storyboard>
                                 </BeginStoryboard>
                             </Trigger.ExitActions>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="{x:Type wu:Hyperlink}">
+        <Setter Property="Padding" Value="0,0,0,0" />
+        <Setter Property="Foreground" Value="{DynamicResource SystemAccentColorDark1Brush}" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="OverridesDefaultStyle" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type wu:Hyperlink}">
+                    <Border
+                        x:Name="HyperlinkBorder"
+                        Padding="{TemplateBinding Padding}"
+                        HorizontalAlignment="{TemplateBinding HorizontalAlignment}"
+                        VerticalAlignment="Center"
+                        Background="Transparent"
+                        BorderBrush="Transparent"
+                        BorderThickness="0">
+                        <StackPanel
+                            Margin="4"
+                            HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            Orientation="Horizontal">
+                            <wu:Icon
+                                x:Name="HyperlinkIcon"
+                                Margin="0,0,12,0"
+                                VerticalAlignment="Center"
+                                Filled="{TemplateBinding IconFilled}"
+                                FontSize="14"
+                                Glyph="{TemplateBinding Icon}" />
+                            <TextBlock
+                                x:Name="HyperlinkText"
+                                VerticalAlignment="Center"
+                                FontSize="{TemplateBinding FontSize}"
+                                Foreground="{TemplateBinding Foreground}"
+                                Text="{TemplateBinding Content}" />
+                        </StackPanel>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="HyperlinkBorder" Property="Background">
+                                <Setter.Value>
+                                    <SolidColorBrush Color="{DynamicResource ControlFillColorDefault}" />
+                                </Setter.Value>
+                            </Setter>
+                            <Setter TargetName="HyperlinkBorder" Property="CornerRadius" Value="4" />
+                        </Trigger>
+                        <Trigger Property="Icon" Value="Empty">
+                            <Setter TargetName="HyperlinkIcon" Property="Margin" Value="0" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="{x:Type wu:Card}">
+        <Setter Property="Background">
+            <Setter.Value>
+                <SolidColorBrush Color="{DynamicResource ControlFillColorDefault}" />
+            </Setter.Value>
+        </Setter>
+        <Setter Property="BorderBrush" Value="{DynamicResource ControlElevationBorderBrush}" />
+        <Setter Property="Padding" Value="12" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="OverridesDefaultStyle" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type wu:Card}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Border
+                            x:Name="CardBorder"
+                            Grid.Row="0"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="4">
+                            <ContentPresenter Margin="{TemplateBinding Padding}" />
+                        </Border>
+
+                        <Border
+                            x:Name="FooterBorder"
+                            Grid.Row="1"
+                            Padding="{TemplateBinding Padding}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="0,0,4,4"
+                            Visibility="Collapsed">
+                            <Border.Background>
+                                <SolidColorBrush Color="{DynamicResource ControlStrokeColorSecondary}" />
+                            </Border.Background>
+                            <ContentPresenter Content="{TemplateBinding Footer}" />
+                        </Border>
+                    </Grid>
+
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="HasFooter" Value="True">
+                            <Setter TargetName="FooterBorder" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="CardBorder" Property="CornerRadius" Value="4,4,0,0" />
+                            <Setter TargetName="CardBorder" Property="BorderThickness" Value="1,1,1,0" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

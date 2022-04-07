@@ -1,44 +1,77 @@
-﻿using DGP.Genshin.Message;
-using DGP.Genshin.Service.Abstratcion;
-using Microsoft.Toolkit.Mvvm.Messaging;
+﻿using CommunityToolkit.Mvvm.Messaging;
+using DGP.Genshin.Message;
+using DGP.Genshin.Service.Abstraction;
+using DGP.Genshin.Service.Abstraction.Setting;
 using Snap.Core.DependencyInjection;
-using System;
-using System.Timers;
+using Snap.Core.Logging;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace DGP.Genshin.Service
 {
+    /// <inheritdoc cref="IScheduleService"/>
     [Service(typeof(IScheduleService), InjectAs.Singleton)]
-    internal class ScheduleService : IScheduleService, IRecipient<SettingChangedMessage>
+    internal class ScheduleService : IScheduleService, IRecipient<AppExitingMessage>
     {
-        private readonly Timer timer;
-        public ScheduleService(ISettingService settingService)
+        private readonly CancellationTokenSource cancellationTokenSource = new();
+        private readonly IMessenger messenger;
+
+        private DateTime lastScheduledTime = DateTime.UtcNow + TimeSpan.FromHours(8);
+
+        /// <summary>
+        /// 构造一个新的计划服务
+        /// </summary>
+        /// <param name="messenger">消息器</param>
+        public ScheduleService(IMessenger messenger)
         {
-            timer = new(); //new(DispatcherPriority.Background, App.Current.Dispatcher);
-            double minutes = settingService.GetOrDefault(Setting.ResinRefreshMinutes, 8d);
-            timer.Interval = TimeSpan.FromMinutes(minutes).TotalMilliseconds;
-            timer.Elapsed += (s, e) => App.Messenger.Send(new TickScheduledMessage());
+            this.messenger = messenger;
         }
 
-        public void Initialize()
+        /// <inheritdoc/>
+        public async Task InitializeAsync()
         {
-            App.Messenger.RegisterAll(this);
-            timer.Start();
-        }
-
-        public void Receive(SettingChangedMessage message)
-        {
-            if (message.Value.Key == Setting.ResinRefreshMinutes)
+            messenger.RegisterAll(this);
+            try
             {
-                //unbox to double
-                double minutes = (double)message.Value.Value!;
-                timer.Interval = TimeSpan.FromMinutes(minutes).TotalMilliseconds;
+                await Task.Run(
+                    async () =>
+                    {
+                        while (true)
+                        {
+                            double minutes = Setting2.ResinRefreshMinutes;
+                            await Task.Delay(TimeSpan.FromMinutes(minutes), cancellationTokenSource.Token);
+
+                            // await Task.Delay(10000, cancellationTokenSource.Token);
+                            this.Log("Tick scheduled");
+                            messenger.Send(new TickScheduledMessage());
+                            DateTime current = DateTime.UtcNow + TimeSpan.FromHours(8);
+                            if (current.Date > lastScheduledTime.Date)
+                            {
+                                this.Log("Date changed");
+                                messenger.Send(new DayChangedMessage());
+                            }
+
+                            lastScheduledTime = current;
+                        }
+                    },
+                    cancellationTokenSource.Token);
+            }
+            catch (TaskCanceledException)
+            {
             }
         }
 
+        /// <inheritdoc/>
         public void UnInitialize()
         {
-            timer.Stop();
-            App.Messenger.UnregisterAll(this);
+            cancellationTokenSource.Cancel();
+            messenger.UnregisterAll(this);
+        }
+
+        /// <inheritdoc/>
+        public void Receive(AppExitingMessage message)
+        {
+            UnInitialize();
         }
     }
 }

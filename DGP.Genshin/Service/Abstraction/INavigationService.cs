@@ -1,9 +1,11 @@
 ﻿using DGP.Genshin.Core.Plugins;
+using DGP.Genshin.DataModel.WebViewLobby;
+using DGP.Genshin.Message;
 using ModernWpf.Controls;
 using ModernWpf.Media.Animation;
-using System;
+using System.Collections.ObjectModel;
 
-namespace DGP.Genshin.Service.Abstratcion
+namespace DGP.Genshin.Service.Abstraction
 {
     /// <summary>
     /// 导航服务
@@ -55,7 +57,8 @@ namespace DGP.Genshin.Service.Abstratcion
         /// <param name="data">要传递的数据</param>
         /// <param name="info">导航动画变换信息</param>
         /// <returns>是否导航成功</returns>
-        bool Navigate<T>(bool isSyncTabRequested = false, object? data = null, NavigationTransitionInfo? info = null) where T : System.Windows.Controls.Page;
+        bool Navigate<T>(bool isSyncTabRequested = false, object? data = null, NavigationTransitionInfo? info = null)
+            where T : System.Windows.Controls.Page;
 
         /// <summary>
         /// 同步导航标签
@@ -63,5 +66,18 @@ namespace DGP.Genshin.Service.Abstratcion
         /// <param name="pageType">同步的页面类型</param>
         /// <returns>是否同步成功</returns>
         bool SyncTabWith(Type pageType);
+
+        /// <summary>
+        /// 添加自定义网页入口
+        /// </summary>
+        /// <param name="entries">入口集合</param>
+        void AddWebViewEntries(ObservableCollection<WebViewEntry>? entries);
+
+        /// <summary>
+        /// 导航到指定的页面
+        /// </summary>
+        /// <param name="message">导航请求消息</param>
+        /// <returns>是否导航成功</returns>
+        bool Navigate(NavigateRequestMessage message);
     }
 }

@@ -1,6 +1,7 @@
-﻿using System;
+﻿using Microsoft.VisualStudio.Threading;
+using Snap.Data.Utility.Extension;
 using System.IO;
-using System.Windows;
+using System.Threading.Tasks;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -11,7 +12,14 @@ namespace DGP.Genshin.Control.Infrastructure.CachedImage
     /// <summary>
     /// Represents an icon that uses a bitmap as its content.
     /// </summary>
-    public class CachedBitmapIcon : CachedIconElementBase
+    [SuppressMessage("", "SA1101")]
+    [SuppressMessage("", "SA1124")]
+    [SuppressMessage("", "SA1201")]
+    [SuppressMessage("", "SA1202")]
+    [SuppressMessage("", "SA1309")]
+    [SuppressMessage("", "SA1413")]
+    [SuppressMessage("", "SA1600")]
+    public sealed class CachedBitmapIcon : CachedIconElementBase
     {
         static CachedBitmapIcon()
         {
@@ -43,6 +51,7 @@ namespace DGP.Genshin.Control.Infrastructure.CachedImage
         public Uri UriSource
         {
             get => (Uri)GetValue(UriSourceProperty);
+
             set => SetValue(UriSourceProperty, value);
         }
 
@@ -75,6 +84,7 @@ namespace DGP.Genshin.Control.Infrastructure.CachedImage
         public bool ShowAsMonochrome
         {
             get => (bool)GetValue(ShowAsMonochromeProperty);
+
             set => SetValue(ShowAsMonochromeProperty, value);
         }
 
@@ -132,7 +142,12 @@ namespace DGP.Genshin.Control.Infrastructure.CachedImage
             }
         }
 
-        private async void ApplyUriSource()
+        private void ApplyUriSource()
+        {
+            ApplyUriSourceAsync().Forget();
+        }
+
+        private async Task ApplyUriSourceAsync()
         {
             if (_image != null && _opacityMask != null)
             {
@@ -145,14 +160,18 @@ namespace DGP.Genshin.Control.Infrastructure.CachedImage
                         try
                         {
                             BitmapImage imageSource = new();
-                            imageSource.BeginInit();
-                            //imageSource.CreateOptions = BitmapCreateOptions.None;
-                            imageSource.StreamSource = stream;
-                            imageSource.EndInit();
+                            using (imageSource.AsDisposableInit())
+                            {
+                                // imageSource.CreateOptions = BitmapCreateOptions.None;
+                                imageSource.StreamSource = stream;
+                            }
+
                             _image.Source = imageSource;
                             _opacityMask.ImageSource = imageSource;
                         }
-                        catch { }
+                        catch
+                        {
+                        }
                     }
                 }
                 else

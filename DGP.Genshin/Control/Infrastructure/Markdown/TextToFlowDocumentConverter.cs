@@ -1,24 +1,28 @@
-﻿using System;
-using System.Globalization;
-using System.Windows;
-using System.Windows.Data;
+﻿using System.Globalization;
 
 namespace DGP.Genshin.Control.Infrastructure.Markdown
 {
+    /// <summary>
+    /// 将文本转化为流文档
+    /// </summary>
     public class TextToFlowDocumentConverter : DependencyObject, IValueConverter
     {
+        private static readonly DependencyProperty MarkdownProperty = Property<TextToFlowDocumentConverter>.Depend<Markdown>(nameof(Markdown));
+
+        private readonly Lazy<Markdown> mMarkdown = new(() => new Markdown());
+
+        /// <summary>
+        /// 使用的转换对象
+        /// </summary>
         public Markdown? Markdown
         {
             get => (Markdown)GetValue(MarkdownProperty);
+
             set => SetValue(MarkdownProperty, value);
         }
 
-        // Using a DependencyProperty as the backing store for Markdown.  This enables animation, styling, binding, etc...
-        public static readonly DependencyProperty MarkdownProperty =
-            DependencyProperty.Register("Markdown", typeof(Markdown), typeof(TextToFlowDocumentConverter), new PropertyMetadata(null));
-
         /// <summary>
-        /// Converts a value. 
+        /// Converts a value.
         /// </summary>
         /// <returns>
         /// A converted value. If the method returns null, the valid null value is used.
@@ -42,7 +46,7 @@ namespace DGP.Genshin.Control.Infrastructure.Markdown
         }
 
         /// <summary>
-        /// Converts a value. 
+        /// Converts a value.
         /// </summary>
         /// <returns>
         /// A converted value. If the method returns null, the valid null value is used.
@@ -53,10 +57,7 @@ namespace DGP.Genshin.Control.Infrastructure.Markdown
         /// <param name="culture">The culture to use in the converter.</param>
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         {
-            throw new NotImplementedException();
+            throw Must.NeverHappen();
         }
-
-        private readonly Lazy<Markdown> mMarkdown
-            = new(() => new Markdown());
     }
 }

@@ -1,9 +1,8 @@
-﻿using System;
-
-namespace DGP.Genshin.Core.Plugins
+﻿namespace DGP.Genshin.Core.Plugins
 {
     /// <summary>
     /// 实现插件接口
+    /// 该类必须具有一个公共的无参构造函数
     /// </summary>
     public interface IPlugin
     {
@@ -11,7 +10,9 @@ namespace DGP.Genshin.Core.Plugins
         /// 启用与禁用
         /// 插件需要自行实现这一状态的保存
         /// </summary>
-        bool IsEnabled { get; set; }
+        [Obsolete("该属性不再有意义")]
+        bool IsEnabled { get; }
+
         /// <summary>
         /// 名称
         /// </summary>
